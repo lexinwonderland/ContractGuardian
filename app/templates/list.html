@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html>
+<head>
+	<meta charset="utf-8" />
+	<title>Contracts</title>
+	<link rel="stylesheet" href="/static/style.css" />
+</head>
+<body>
+	<header>
+		<h1>Contracts</h1>
+		<nav>
+			<a href="/">Home</a>
+			<a href="/upload">Upload</a>
+			{% if user %}
+				<a href="#" onclick="logout()">Logout</a>
+			{% endif %}
+		</nav>
+	</header>
+	<main>
+		<form id="searchForm">
+			<input name="q" placeholder="Search title or text…" />
+			<button>Search</button>
+		</form>
+		<ul id="list"></ul>
+	</main>
+	<script>
+	const listEl = document.getElementById('list');
+	const form = document.getElementById('searchForm');
+	async function load(){
+		const q = new URLSearchParams(location.search).get('q') || '';
+		form.q.value = q;
+		const res = await fetch('/contracts/list' + (q ? ('?q=' + encodeURIComponent(q)) : ''), { credentials: 'include' });
+		const data = await res.json();
+		listEl.innerHTML = data.map(c => `
+			<li data-id="${c.id}">
+				<a href="/contracts/view/${c.id}">${escapeHtml(c.title)}</a>
+				<div class=\"meta\">${escapeHtml(c.counterparty || '-')}
+				 | ${c.contract_date || '-'} | Product: ${escapeHtml(c.production || '-')}
+				 | Added ${new Date(c.created_at).toLocaleString()}${c.stored_filename ? ` | <a href="/contracts/file/${c.id}" target="_blank" rel="noopener" data-file>Original</a>` : ''}
+				 | <button class="delete-button" data-id="${c.id}">Delete</button>
+				</div>
+			</li>
+		`).join('');
+		attachDeleteHandlers();
+	}
+	form.addEventListener('submit', (e)=>{
+		e.preventDefault();
+		const q = form.q.value.trim();
+		location.search = q ? ('?q=' + encodeURIComponent(q)) : '';
+	});
+	function escapeHtml(str){
+		return (str||'').replace(/[&<>"]/g, s => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[s]));
+	}
+	function attachDeleteHandlers(){
+		document.querySelectorAll('.delete-button').forEach(btn => {
+			btn.addEventListener('click', async (e) => {
+				e.preventDefault();
+				const id = btn.getAttribute('data-id');
+				if (!confirm('Delete this contract? This cannot be undone.')) return;
+				const res = await fetch(`/contracts/${id}`, { method: 'DELETE' });
+				if (res.ok) {
+					load();
+				} else {
+					const err = await res.json().catch(()=>({detail:'Delete failed'}));
+					alert(err.detail || 'Delete failed');
+				}
+			});
+		});
+	}
+	async function logout() {
+		const res = await fetch('/auth/logout', { method: 'POST', credentials: 'include' });
+		if (res.ok) {
+			location.href = '/';
+		}
+	}
+	load();
+	</script>
+</body>
+</html> 

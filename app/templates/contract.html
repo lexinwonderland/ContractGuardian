@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html>
+<head>
+	<meta charset="utf-8" />
+	<title>Contract</title>
+	<link rel="stylesheet" href="/static/style.css" />
+</head>
+<body>
+	<header>
+		<h1>Contract</h1>
+		<nav>
+			<a href="/">Home</a>
+			<a href="/contracts">Contracts</a>
+			{% if user %}
+				<a href="#" onclick="logout()">Logout</a>
+			{% endif %}
+		</nav>
+	</header>
+	<main>
+		<div id="root">Loading…</div>
+	</main>
+	<script>
+	const root = document.getElementById('root');
+	const id = location.pathname.split('/').pop();
+	if (!/^\d+$/.test(id)) {
+		// expected path: /contracts/view/{id}
+		const parts = location.pathname.split('/');
+		id = parts[parts.length - 1] || parts[parts.length - 2];
+	}
+	fetch(`/contracts/${id}`, { credentials: 'include' }).then(r=>r.json()).then(c => {
+		root.innerHTML = renderContract(c);
+	});
+	function renderContract(c){
+		const flags = (c.flags||[]).map(f => `
+			<li class="flag ${f.severity}">
+				<div class="flag-head"><strong>${f.category}</strong> <em>${f.severity}</em></div>
+				<div class="excerpt">${escapeHtml(f.excerpt || '')}</div>
+				<div class="explain">${escapeHtml(f.explanation)}</div>
+				<div class="guide">${escapeHtml(f.guidance)}</div>
+			</li>
+		`).join('');
+		const fileUrl = c.stored_filename ? (`/contracts/file/${c.id}`) : null;
+		const isImage = fileUrl && /\.(png|jpe?g|gif|webp|bmp|svg)$/i.test(c.stored_filename || '');
+		const isPdf = fileUrl && /\.(pdf)$/i.test(c.stored_filename || '');
+		const viewer = fileUrl ? (
+			isImage ? `<img src="${fileUrl}" alt="Original upload" style="max-width:100%;height:auto;border:1px solid #ccc;border-radius:4px;" />` :
+			isPdf ? `<iframe src="${fileUrl}" style="width:100%;height:70vh;border:1px solid #ccc;border-radius:4px;"></iframe>` :
+			`<a href="${fileUrl}" target="_blank" rel="noopener">Open original file</a>`
+		) : '';
+		return `
+			<h2>${escapeHtml(c.title)}</h2>
+			<p><strong>Producer:</strong> ${escapeHtml(c.counterparty || '-')}
+			 | <strong>Product/Production:</strong> ${escapeHtml(c.production || '-')}
+			 | <strong>Date:</strong> ${c.contract_date || '-'} | <strong>Added:</strong> ${new Date(c.created_at).toLocaleString()}</p>
+			${fileUrl ? `<h3>Original File</h3><div class="original">${viewer}</div>` : ''}
+			<h3>Flags (${(c.flags||[]).length})</h3>
+			<ul class="flags">${flags || '<li>No issues detected by automated scan.</li>'}</ul>
+			<details>
+				<summary>Full Text</summary>
+				<pre class="contract-text">${escapeHtml(c.text)}</pre>
+			</details>
+		`;
+	}
+	function escapeHtml(str){
+		return (str||'').replace(/[&<>"]/g, s => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[s]));
+	}
+	async function logout() {
+		const res = await fetch('/auth/logout', { method: 'POST', credentials: 'include' });
+		if (res.ok) {
+			location.href = '/';
+		}
+	}
+	</script>
+</body>
+</html> 

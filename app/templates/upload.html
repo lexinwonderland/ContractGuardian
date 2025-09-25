@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html>
+<head>
+	<meta charset="utf-8" />
+	<title>Upload Contract</title>
+	<link rel="stylesheet" href="/static/style.css" />
+</head>
+<body>
+	<header>
+		<h1>Upload Contract</h1>
+		<nav>
+			<a href="/">Home</a>
+			<a href="/contracts">Contracts</a>
+			{% if user %}
+				<a href="#" onclick="logout()">Logout</a>
+			{% endif %}
+		</nav>
+	</header>
+	<main>
+		<form id="uploadForm">
+			<label>Title
+				<input name="title" required />
+			</label>
+			<label>Product/Production
+				<input name="production" />
+			</label>
+			<label>Producer
+				<input name="counterparty" />
+			</label>
+			<label>Contract date
+				<input name="contract_date" type="date" />
+			</label>
+			<label>File (PDF/Image/Text)
+				<input name="file" type="file" accept=".pdf,image/*,text/plain" required />
+			</label>
+			<button type="submit">Upload & Analyze</button>
+		</form>
+		<div id="result"></div>
+	</main>
+	<script>
+	const form = document.getElementById('uploadForm');
+	const result = document.getElementById('result');
+	form.addEventListener('submit', async (e) => {
+		e.preventDefault();
+		const fd = new FormData(form);
+		result.innerHTML = 'Uploading…';
+		const res = await fetch('/contracts/upload', { method: 'POST', body: fd });
+		if (!res.ok) {
+			const err = await res.json().catch(() => ({detail: 'Upload failed'}));
+			result.innerHTML = `<div class="error">${err.detail || 'Upload failed'}</div>`;
+			return;
+		}
+		const data = await res.json();
+		result.innerHTML = renderContract(data);
+	});
+
+	function renderContract(c) {
+		const flags = (c.flags || []).map(f => `
+			<li class="flag ${f.severity}">
+				<div class="flag-head"><strong>${f.category}</strong> <em>${f.severity}</em></div>
+				<div class="excerpt">${escapeHtml(f.excerpt || '')}</div>
+				<div class="explain">${escapeHtml(f.explanation)}</div>
+				<div class="guide">${escapeHtml(f.guidance)}</div>
+			</li>
+		`).join('');
+		return `
+			<h2>${escapeHtml(c.title)}</h2>
+			<p><strong>Producer:</strong> ${escapeHtml(c.counterparty || '-')}
+			 | <strong>Product/Production:</strong> ${escapeHtml(c.production || '-')}
+			 | <strong>Date:</strong> ${c.contract_date || '-'}</p>
+			<h3>Flags (${(c.flags || []).length})</h3>
+			<ul class="flags">${flags || '<li>No issues detected by automated scan.</li>'}</ul>
+		`;
+	}
+	function escapeHtml(str){
+		return (str||'').replace(/[&<>"]/g, s => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[s]));
+	}
+	async function logout() {
+		const res = await fetch('/auth/logout', { method: 'POST', credentials: 'include' });
+		if (res.ok) {
+			location.href = '/';
+		}
+	}
+	</script>
+</body>
+</html> 

@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html>
+<head>
+	<meta charset="utf-8" />
+	<title>Login</title>
+	<link rel="stylesheet" href="/static/style.css" />
+</head>
+<body>
+	<header>
+		<h1>Login</h1>
+		<nav>
+			<a href="/">Home</a>
+			{% if user %}
+				<a href="#" onclick="logout()">Logout</a>
+			{% else %}
+				<a href="/register">Register</a>
+			{% endif %}
+		</nav>
+	</header>
+	<main>
+		<form id="loginForm">
+			<label>Email
+				<input name="email" type="email" required />
+			</label>
+			<label>Password
+				<input name="password" type="password" required />
+			</label>
+			<button type="submit">Login</button>
+		</form>
+		<div id="msg"></div>
+	</main>
+	<script>
+	const form = document.getElementById('loginForm');
+	const msg = document.getElementById('msg');
+	form.addEventListener('submit', async (e) => {
+		e.preventDefault();
+		const fd = new FormData(form);
+		const res = await fetch('/auth/login', { method: 'POST', body: fd, credentials: 'include' });
+		if (res.ok) {
+			location.href = '/contracts';
+		} else {
+			const err = await res.json().catch(()=>({detail:'Login failed'}));
+			msg.textContent = err.detail || 'Login failed';
+		}
+	});
+	async function logout() {
+		const res = await fetch('/auth/logout', { method: 'POST', credentials: 'include' });
+		if (res.ok) {
+			location.href = '/';
+		}
+	}
+	</script>
+</body>
+</html> 

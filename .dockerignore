@@ -1,0 +1,14 @@
+.git
+.gitignore
+**/__pycache__/**
+**/*.pyc
+.venv
+venv
+gesture
+tool
+uploads
+contracts.db
+*.log
+.DS_Store
+README_images/
+
