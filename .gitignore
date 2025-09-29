@@ -1,0 +1,17 @@
+# Python
+__pycache__/
+*.pyc
+
+# Envs
+.venv/
+
+# OS/files
+.DS_Store
+
+# Local data/uploads (keep these out of git)
+uploads/
+data.db
+
+# IDE
+.vscode/
+.idea/
