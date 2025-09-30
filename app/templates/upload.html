@@ -44,14 +44,40 @@
 		e.preventDefault();
 		const fd = new FormData(form);
 		result.innerHTML = 'Uploading…';
-		const res = await fetch('/contracts/upload', { method: 'POST', body: fd, credentials: 'include' });
-		if (!res.ok) {
-			const err = await res.json().catch(() => ({detail: 'Upload failed'}));
-			result.innerHTML = `<div class="error">${err.detail || 'Upload failed'}</div>`;
-			return;
+		try {
+			const res = await fetch('/contracts/upload', { method: 'POST', body: fd, credentials: 'include' });
+			if (!res.ok) {
+				const contentType = res.headers.get('content-type') || '';
+				let bodyText = '';
+				try { bodyText = await res.text(); } catch {}
+				let detail = '';
+				try {
+					if (contentType.includes('application/json')) {
+						const json = JSON.parse(bodyText || '{}');
+						detail = json.detail || json.message || '';
+					}
+				} catch {}
+				const safeBody = escapeHtml((detail || bodyText || '').slice(0, 800));
+				const status = `${res.status} ${res.statusText}`;
+				console.error('Upload failed', { status: res.status, statusText: res.statusText, contentType, bodyText });
+				let hint = '';
+				if (res.status === 401) hint = 'You may need to log in first.';
+				else if (res.status === 400 && safeBody.includes('No text could be extracted')) hint = 'Try a clearer PDF/image, or upload a text file.';
+				else if (res.status === 413) hint = 'File too large. Try a smaller file.';
+				result.innerHTML = `
+					<div class="error">
+						<strong>Upload failed:</strong> ${status}<br/>
+						${safeBody || 'No additional error details provided.'}
+						${hint ? `<div class="hint">Hint: ${escapeHtml(hint)}</div>` : ''}
+					</div>`;
+				return;
+			}
+			const data = await res.json();
+			result.innerHTML = renderContract(data);
+		} catch (networkErr) {
+			console.error('Network error during upload', networkErr);
+			result.innerHTML = `<div class="error">Network error during upload. Please check your connection and try again.</div>`;
 		}
-		const data = await res.json();
-		result.innerHTML = renderContract(data);
 	});
 
 	function renderContract(c) {
