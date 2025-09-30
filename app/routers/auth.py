@@ -39,26 +39,26 @@ def login(response: Response, email: str = Form(...), password: str = Form(...),
 	if not user or not verify_password(password, user.password_hash, user.password_salt):
 		raise HTTPException(status_code=401, detail="Invalid credentials")
 	token = create_access_token(user.id)
-    response.set_cookie(
-        COOKIE_NAME,
-        token,
-        httponly=True,
-        secure=COOKIE_SECURE,
-        samesite=COOKIE_SAMESITE,
-        domain=COOKIE_DOMAIN,
-        max_age=60*60*24*7,
-    )
+	response.set_cookie(
+		COOKIE_NAME,
+		token,
+		httponly=True,
+		secure=COOKIE_SECURE,
+		samesite=COOKIE_SAMESITE,
+		domain=COOKIE_DOMAIN,
+		max_age=60*60*24*7,
+	)
 	return {"ok": True}
 
 
 @router.post("/logout")
 def logout(response: Response):
-    # Mirror cookie attributes to ensure deletion across browsers
-    response.delete_cookie(
-        COOKIE_NAME,
-        domain=COOKIE_DOMAIN,
-        samesite=COOKIE_SAMESITE,
-    )
+	# Mirror cookie attributes to ensure deletion across browsers
+	response.delete_cookie(
+		COOKIE_NAME,
+		domain=COOKIE_DOMAIN,
+		samesite=COOKIE_SAMESITE,
+	)
 	return {"ok": True}
 
 

@@ -15,14 +15,35 @@ Contract storage, scanning (OCR), and plain‑language alerts for performers.
 
 ## Setup
 1. Python 3.11+
-2. Install system deps (macOS):
-   - Tesseract: `brew install tesseract`
-   - Poppler (for PDF rendering when OCR fallback is used): `brew install poppler`
+2. Install system deps
+   - macOS (Homebrew):
+     - Tesseract: `brew install tesseract`
+     - Poppler (for PDF rendering when OCR fallback is used): `brew install poppler`
+   - Ubuntu/Debian:
+     - `sudo apt update && sudo apt install -y tesseract-ocr poppler-utils`
+   - Fedora:
+     - `sudo dnf install -y tesseract tesseract-langpack-eng poppler-utils`
 3. Create venv and install Python deps:
 
 ```bash
 python3 -m venv .venv
 source .venv/bin/activate
+pip install -r requirements.txt
+```
+
+Windows (PowerShell):
+
+```powershell
+py -3.11 -m venv .venv
+./.venv/Scripts/Activate.ps1
+pip install -r requirements.txt
+```
+
+Windows (CMD):
+
+```bat
+py -3.11 -m venv .venv
+.\.venv\Scripts\activate.bat
 pip install -r requirements.txt
 ```
 
@@ -38,7 +59,7 @@ Build and run locally with Docker:
 ```bash
 docker build -t contract-guardian .
 docker run --rm -p 8000:8000 \
-  -e CG_SECRET_KEY="change-me" \
+  -e CG_SECRET_KEY="PedKcsPs6dNNeGDfDYUBBB9FYFhGSAWLavPVrgBPazJgDOonJ52GjloFrvA0GK7S" \
   -e CG_COOKIE_SECURE=1 \
   -e CG_COOKIE_SAMESITE=lax \
   contract-guardian

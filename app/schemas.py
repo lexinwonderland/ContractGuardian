@@ -6,9 +6,9 @@ from pydantic import BaseModel
 class ClauseFlagBase(BaseModel):
 	category: str
 	severity: str
-	start_index: int | None = None
-	end_index: int | None = None
-	excerpt: str | None = None
+	start_index: Optional[int] = None
+	end_index: Optional[int] = None
+	excerpt: Optional[str] = None
 	explanation: str
 	guidance: str
 
