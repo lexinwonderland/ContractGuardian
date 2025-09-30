@@ -49,12 +49,14 @@
 			`<a href="${fileUrl}" target="_blank" rel="noopener">Open original file</a>`
 		) : '';
 		return `
-			<h2>${escapeHtml(c.title)}</h2>
-			<p><strong>Producer:</strong> ${escapeHtml(c.counterparty || '-')}
-			 | <strong>Product/Production:</strong> ${escapeHtml(c.production || '-')}
-			 | <strong>Date:</strong> ${c.contract_date || '-'} | <strong>Added:</strong> ${new Date(c.created_at).toLocaleString()}</p>
-			${fileUrl ? `<h3>Original File</h3><div class="original">${viewer}</div>` : ''}
-			<h3>Flags (${numFlags})</h3>
+			<div class="rounded-xl border border-gray-200 bg-gray-50 p-5 md:p-6">
+			  <h2 class="text-xl font-semibold text-gray-900">${escapeHtml(c.title)}</h2>
+			  <p class="mt-1 text-[15px] leading-relaxed text-gray-700"><strong>Producer:</strong> ${escapeHtml(c.counterparty || '-')}
+			   | <strong>Product/Production:</strong> ${escapeHtml(c.production || '-')}
+			   | <strong>Date:</strong> ${c.contract_date || '-'} | <strong>Added:</strong> ${new Date(c.created_at).toLocaleString()}</p>
+			</div>
+			${fileUrl ? `<div class="rounded-xl border border-gray-200 bg-white p-5 md:p-6" style="margin-top:16px"><h3 class="text-lg font-semibold text-gray-900" style="margin-top:0">Original File</h3><div class="original">${viewer}</div></div>` : ''}
+			<h3 class="text-lg font-semibold text-gray-900" style="margin-top:16px">Flags (${numFlags})</h3>
 			${numFlags === 0 ? `
 			<!-- All-clear alert (SAG style) -->
 			<div role="status" aria-live="polite"
@@ -77,12 +79,17 @@
 			    </svg>
 			  </div>
 			</div>
-			` : ''}
-			<ul class="flags">${flags}</ul>
-			<details>
-				<summary>Full Text</summary>
-				<pre class="contract-text">${escapeHtml(c.text)}</pre>
-			</details>
+			` : `
+			<div class="rounded-xl border border-gray-200 bg-gray-50 p-5 md:p-6" style="margin-top:8px">
+			  <ul class="flags" style="margin-top:0">${flags}</ul>
+			</div>
+			`}
+			<div class="rounded-xl border border-gray-200 bg-white p-5 md:p-6" style="margin-top:16px">
+				<details>
+					<summary class="text-lg font-semibold text-gray-900">Full Text</summary>
+					<pre class="contract-text" style="margin-top:12px">${escapeHtml(c.text)}</pre>
+				</details>
+			</div>
 		`;
 	}
 	function escapeHtml(str){
