@@ -37,10 +37,10 @@ def extract_text_from_pdf_bytes(data: bytes) -> Tuple[str, bool]:
 	try:
 		images = convert_from_bytes(
 			data,
-			dpi=200,
+			dpi=150,
 			fmt="png",
 			first_page=1,
-			last_page=10,
+			last_page=3,
 		)
 	except Exception as e:
 		raise RuntimeError(f"OCR backend unavailable: {e}")

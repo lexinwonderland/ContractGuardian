@@ -16,6 +16,9 @@ UPLOAD_DIR = os.environ.get("UPLOAD_DIR", "uploads")
 os.makedirs(UPLOAD_DIR, exist_ok=True)
 
 
+MAX_UPLOAD_BYTES = 10 * 1024 * 1024  # 10 MB
+
+
 @router.post("/upload", response_model=schemas.ContractRead)
 async def upload_contract(
 	title: str = Form(...),
@@ -26,8 +29,13 @@ async def upload_contract(
 	db: Session = Depends(get_db),
 	user: models.User = Depends(get_current_user),
 ):
+	# Size limit protection
+	if file.size and file.size > MAX_UPLOAD_BYTES:
+		raise HTTPException(status_code=413, detail="File too large (max 10 MB)")
 	filename = file.filename or "uploaded"
 	data = await file.read()
+	if len(data) > MAX_UPLOAD_BYTES:
+		raise HTTPException(status_code=413, detail="File too large (max 10 MB)")
 	text = ""
 	stored_filename = None
 
