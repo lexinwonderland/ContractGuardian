@@ -2,7 +2,7 @@ from fastapi import FastAPI, Request
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from fastapi.responses import HTMLResponse, RedirectResponse
-from .database import init_db
+from .database import init_db, engine
 from .routers import contracts, auth
 from .auth import get_current_user
 from fastapi import HTTPException
@@ -26,6 +26,13 @@ async def get_auth_status(request: Request):
 @app.on_event("startup")
 async def on_startup() -> None:
 	init_db()
+	# Log which database backend is active (helps verify persistence on Render)
+	try:
+		driver = getattr(engine.url, "drivername", "unknown")
+		backend = "sqlite" if str(engine.url).startswith("sqlite") else driver
+		print(f"[startup] Using database backend: {backend}")
+	except Exception:
+		pass
 
 @app.get("/", response_class=HTMLResponse)
 async def index(request: Request):
