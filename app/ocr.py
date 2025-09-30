@@ -33,11 +33,23 @@ def extract_text_from_pdf_bytes(data: bytes) -> Tuple[str, bool]:
 	if text and text.strip():
 		return text, used_ocr
 
-	# OCR fallback
-	images = convert_from_bytes(data, dpi=300)
+	# OCR fallback (limit pages and DPI to avoid timeouts/memory on PaaS)
+	try:
+		images = convert_from_bytes(
+			data,
+			dpi=200,
+			fmt="png",
+			first_page=1,
+			last_page=10,
+		)
+	except Exception as e:
+		raise RuntimeError(f"OCR backend unavailable: {e}")
 	ocr_text_parts = []
 	for img in images:
-		ocr_text_parts.append(pytesseract.image_to_string(img))
+		try:
+			ocr_text_parts.append(pytesseract.image_to_string(img))
+		except Exception as e:
+			ocr_text_parts.append("")
 	used_ocr = True
 	return "\n".join(ocr_text_parts), used_ocr
 
