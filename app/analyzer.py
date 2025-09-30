@@ -105,6 +105,32 @@ def _rules() -> List[Rule]:
 			explanation="States you have no right to compensation, which can waive payment for your work or likeness.",
 			guidance="Ensure express compensation terms are included, or remove any clause waiving compensation rights."
 		),
+        # Broad, perpetual, and universe-wide rights phrases flagged per user guidance
+        Rule(
+            category="Broad/Perpetual Rights Language",
+            severity="high",
+            pattern=re.compile(
+                r"(" \
+                r"owns\s+all\s+rights|" \
+                r"perpetual(?:ly)?\s+in\s+any\s+manner\s+whatsoever|" \
+                r"by\s+any\s+present\s+or\s+future\s+devices|" \
+                r"perpetual\s+right\s+to\s+use\s+my\s+name|" \
+                r"any\s+other\s+person\s+or\s+company\s+who\s+holds\s+or\s+acquires|" \
+                r"to\s+alter,?\s+dub,?\s+revise|" \
+                r"change\s+in\s+any\s+manner\s+whatsoever|" \
+                r"rights?\s+to\s+be\s+worldwide\s+and\s+in\s+perpetuity|" \
+                r"including\s+the\s+right\s+to\s+reproduce,?\s+use|" \
+                r"by\s+any\s+present\s+or\s+future\s+means\s+and\s+devices|" \
+                r"throughout\s+the\s+universe|" \
+                r"in\s+perpetuity\s+in\s+all\s+media|" \
+                r"whether\s+now\s+known\s+or\s+hereafter\s+devised|" \
+                r"for\s+any\s+medium" \
+                r")",
+                re.IGNORECASE,
+            ),
+            explanation="Very broad or perpetual rights language detected (e.g., universe-wide, all media, present/future devices, perpetual name/image use). Such terms can permanently transfer or license your rights without limits.",
+            guidance="Ask to limit scope (specific uses), territory, and term; remove universe-wide and perpetual language; require approvals for edits (alter/dub/revise) and name/likeness uses; consult union/agent or counsel."
+        ),
 	]
 
 
