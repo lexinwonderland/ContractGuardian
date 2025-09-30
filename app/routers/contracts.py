@@ -46,31 +46,39 @@ async def upload_contract(
 	if not text or not text.strip():
 		raise HTTPException(status_code=400, detail="No text could be extracted from the file.")
 
-	stored_filename = os.path.join(UPLOAD_DIR, filename)
-	with open(stored_filename, "wb") as f:
-		f.write(data)
+	try:
+		stored_filename = os.path.join(UPLOAD_DIR, filename)
+		with open(stored_filename, "wb") as f:
+			f.write(data)
 
-	flags = analyze_text(text)
+		flags = analyze_text(text)
 
-	contract = models.Contract(
-		title=title,
-		counterparty=counterparty,
-		production=production,
-		contract_date=contract_date,
-		stored_filename=stored_filename,
-		text=text,
-		user_id=user.id,
-	)
-	db.add(contract)
-	db.flush()
+		contract = models.Contract(
+			title=title,
+			counterparty=counterparty,
+			production=production,
+			contract_date=contract_date,
+			stored_filename=stored_filename,
+			text=text,
+			user_id=user.id,
+		)
+		db.add(contract)
+		db.flush()
 
-	for flag in flags:
-		cf = models.ClauseFlag(contract_id=contract.id, **flag)
-		db.add(cf)
+		for flag in flags:
+			cf = models.ClauseFlag(contract_id=contract.id, **flag)
+			db.add(cf)
 
-	db.commit()
-	db.refresh(contract)
-	return contract
+		db.commit()
+		db.refresh(contract)
+		return contract
+	except Exception as e:
+		# Surface error details to client and logs to aid debugging on Render (avoid 502 with no message)
+		try:
+			print(f"Upload processing error: {e}")
+		except Exception:
+			pass
+		raise HTTPException(status_code=500, detail=f"Server error during upload: {e}")
 
 
 @router.post("/create", response_model=schemas.ContractRead)
