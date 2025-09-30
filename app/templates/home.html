@@ -1,0 +1,125 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Contract Guardian</title>
+
+  <!-- Tailwind CDN (great for dev; compile for prod) -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            cgYellow: '#FFC400',
+            cgBlack: '#111111',
+            cgMuted: '#6b7280'
+          },
+          borderRadius: { 'xl2': '1.25rem' }
+        }
+      }
+    }
+  </script>
+  <meta name="color-scheme" content="light">
+</head>
+<body class="bg-[#f5f6f8] text-cgBlack">
+  <!-- Header -->
+  <header class="bg-white">
+    <div class="max-w-7xl mx-auto px-6 h-20 flex items-center justify-between">
+      <a href="{{ url_for('home') }}" class="flex items-center gap-3">
+        <img src="{{ url_for('static', path='cglogo.png') }}" alt="Contract Guardian logo" class="h-12 w-auto" />
+        <span class="text-xl font-semibold">Contract Guardian</span>
+      </a>
+      <nav class="flex items-center gap-4">
+        <a class="px-3 py-2 hover:underline" href="{{ url_for('contracts') }}">Contracts</a>
+
+        {% if user %}
+          <a class="rounded-full px-4 py-2 bg-cgBlack text-cgYellow font-medium hover:opacity-90"
+             href="{{ url_for('upload') }}">Upload</a>
+          <span class="text-sm text-cgMuted">Hi, {{ user.email }}</span>
+        {% else %}
+          <a class="px-3 py-2 hover:underline" href="{{ url_for('login') }}">Log in</a>
+          <a class="rounded-full px-4 py-2 bg-cgBlack text-cgYellow font-medium hover:opacity-90"
+             href="{{ url_for('register') }}">Sign up</a>
+        {% endif %}
+      </nav>
+    </div>
+  </header>
+
+  <!-- Hero (no demo box) -->
+  <section class="max-w-7xl mx-auto px-6 pt-8">
+    <div class="rounded-2xl bg-cgYellow px-8 py-12">
+      <h1 class="text-4xl md:text-5xl font-bold leading-tight">
+        Store, Search, and Track Your<br class="hidden md:block"/> Contract Terms—All in One Place
+      </h1>
+      <p class="mt-4 text-lg">
+        Upload agreements, flag risky clauses <em>before you sign</em>, and keep a plain-language record over time.
+      </p>
+
+      <div class="mt-6 flex flex-wrap gap-3">
+        <a href="{{ url_for('upload') }}"
+           class="inline-flex items-center justify-center rounded-full px-6 py-3 bg-cgBlack text-cgYellow font-medium hover:opacity-90">
+          Upload your contracts
+        </a>
+        <a href="{{ url_for('contracts') }}"
+           class="inline-flex items-center justify-center rounded-full px-6 py-3 border-2 border-cgBlack">
+          Browse &amp; Search
+        </a>
+      </div>
+    </div>
+  </section>
+
+  <!-- Feature grid -->
+  <section class="max-w-7xl mx-auto px-6 py-12">
+    <h2 class="text-2xl md:text-3xl font-semibold">Why Contract Guardian</h2>
+
+    <div class="mt-8 grid gap-6 md:grid-cols-3">
+      <!-- Feature 1 -->
+      <article class="rounded-2xl border border-gray-200 bg-white p-6 text-center">
+        <h3 class="text-lg font-semibold">Flag predatory language<br/>before signature</h3>
+        <p class="mt-3 text-cgMuted">
+          Detectors highlight risky clauses with <strong>plain-language explanations</strong> and
+          <strong>next-step guidance</strong>.
+        </p>
+      </article>
+
+      <!-- Feature 2 -->
+      <article class="rounded-2xl border border-gray-200 bg-white p-6 text-center">
+        <h3 class="text-lg font-semibold">Structured storage &amp; powerful search</h3>
+        <p class="mt-3 text-cgMuted">
+          Store every contract; search by <strong>party, date, and risk</strong>.
+          View <strong>timelines</strong> of what you agreed to.
+        </p>
+      </article>
+
+      <!-- Feature 3 (Consent management) -->
+      <article class="rounded-2xl border border-gray-200 bg-white p-6 text-center">
+        <h3 class="text-lg font-semibold">Consent management</h3>
+        <p class="mt-3 text-cgMuted">
+          Ensure consent for every additional use by keeping a record of all your
+          <strong>signatures and agreements</strong>.
+        </p>
+      </article>
+    </div>
+  </section>
+
+  <!-- Dark CTA band -->
+  <section class="bg-cgBlack text-white">
+    <div class="max-w-7xl mx-auto px-6 py-10 flex flex-col md:flex-row items-center justify-between gap-4">
+      <div>
+        <h3 class="text-2xl font-semibold text-cgYellow">Ready to protect your future self?</h3>
+        <p class="opacity-90">Upload your first contract and get instant, plain-language analysis.</p>
+      </div>
+      <a href="{{ url_for('upload') }}"
+         class="rounded-full bg-cgYellow text-cgBlack font-semibold px-6 py-3 hover:opacity-90">
+        Upload a contract
+      </a>
+    </div>
+  </section>
+
+  <footer class="max-w-7xl mx-auto px-6 py-8 text-sm text-cgMuted">
+    © {{ now().year if now else '2025' }} Contract Guardian. All rights reserved.
+  </footer>
+</body>
+</html>
