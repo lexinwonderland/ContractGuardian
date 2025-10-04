@@ -36,6 +36,8 @@ class ContractRead(ContractBase):
 	id: int
 	stored_filename: Optional[str] = None
 	text: str
+	status: Optional[str] = None
+	consent_notes: Optional[str] = None
 	created_at: datetime
 	flags: List[ClauseFlagRead] = []
 
@@ -49,8 +51,15 @@ class ContractListItem(BaseModel):
 	counterparty: Optional[str]
 	production: Optional[str]
 	contract_date: Optional[date]
+	status: Optional[str] = None
+	consent_notes: Optional[str] = None
 	created_at: datetime
 	stored_filename: Optional[str] = None
 
 	class Config:
-		from_attributes = True 
+		from_attributes = True
+
+
+class ContractStatusUpdate(BaseModel):
+	status: str
+	consent_notes: Optional[str] = None 

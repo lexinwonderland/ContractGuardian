@@ -32,16 +32,29 @@
 		const res = await fetch('/contracts/list' + (q ? ('?q=' + encodeURIComponent(q)) : ''), { credentials: 'include' });
 		const data = await res.json();
 		listEl.innerHTML = data.map(c => `
-			<li data-id="${c.id}">
-				<a href="/contracts/view/${c.id}">${escapeHtml(c.title)}</a>
-				<div class=\"meta\">${escapeHtml(c.counterparty || '-')}
+			<li data-id="${c.id}" class="contract-item">
+				<div class="contract-header">
+					<a href="/contracts/view/${c.id}">${escapeHtml(c.title)}</a>
+					<div class="status-controls">
+						<select class="status-dropdown" data-id="${c.id}" data-current="${c.status || 'hold'}">
+							<option value="hold" ${(c.status || 'hold') === 'hold' ? 'selected' : ''}>Hold</option>
+							<option value="negotiating" ${c.status === 'negotiating' ? 'selected' : ''}>Negotiating</option>
+							<option value="signed" ${c.status === 'signed' ? 'selected' : ''}>Signed</option>
+						</select>
+						${c.status === 'signed' ? `<button class="notes-button" data-id="${c.id}">Add Notes</button>` : ''}
+					</div>
+				</div>
+				<div class="meta">${escapeHtml(c.counterparty || '-')}
 				 | ${c.contract_date || '-'} | Product: ${escapeHtml(c.production || '-')}
 				 | Added ${new Date(c.created_at).toLocaleString()}${c.stored_filename ? ` | <a href="/contracts/file/${c.id}" target="_blank" rel="noopener" data-file>Original</a>` : ''}
 				 | <button class="delete-button" data-id="${c.id}">Delete</button>
 				</div>
+				${c.consent_notes ? `<div class="consent-notes"><strong>Consent Notes:</strong> ${escapeHtml(c.consent_notes)}</div>` : ''}
 			</li>
 		`).join('');
 		attachDeleteHandlers();
+		attachStatusHandlers();
+		attachNotesHandlers();
 	}
 	form.addEventListener('submit', (e)=>{
 		e.preventDefault();
@@ -63,6 +76,59 @@
 				} else {
 					const err = await res.json().catch(()=>({detail:'Delete failed'}));
 					alert(err.detail || 'Delete failed');
+				}
+			});
+		});
+	}
+	function attachStatusHandlers(){
+		document.querySelectorAll('.status-dropdown').forEach(select => {
+			select.addEventListener('change', async (e) => {
+				const id = select.getAttribute('data-id');
+				const status = select.value;
+				try {
+					const res = await fetch(`/contracts/${id}/status`, {
+						method: 'PATCH',
+						headers: { 'Content-Type': 'application/json' },
+						credentials: 'include',
+						body: JSON.stringify({ status })
+					});
+					if (res.ok) {
+						load(); // Reload to show updated status and notes button
+					} else {
+						const err = await res.json().catch(()=>({detail:'Update failed'}));
+						alert(err.detail || 'Status update failed');
+						load(); // Reload to reset dropdown
+					}
+				} catch (error) {
+					alert('Status update failed');
+					load(); // Reload to reset dropdown
+				}
+			});
+		});
+	}
+	function attachNotesHandlers(){
+		document.querySelectorAll('.notes-button').forEach(btn => {
+			btn.addEventListener('click', async (e) => {
+				e.preventDefault();
+				const id = btn.getAttribute('data-id');
+				const notes = prompt('Add notes about consent/usage categories you agreed to:');
+				if (notes !== null) {
+					try {
+						const res = await fetch(`/contracts/${id}/status`, {
+							method: 'PATCH',
+							headers: { 'Content-Type': 'application/json' },
+							credentials: 'include',
+							body: JSON.stringify({ status: 'signed', consent_notes: notes })
+						});
+						if (res.ok) {
+							load(); // Reload to show updated notes
+						} else {
+							const err = await res.json().catch(()=>({detail:'Update failed'}));
+							alert(err.detail || 'Notes update failed');
+						}
+					} catch (error) {
+						alert('Notes update failed');
+					}
 				}
 			});
 		});

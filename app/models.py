@@ -26,6 +26,8 @@ class Contract(Base):
 	contract_date = Column(Date, nullable=True)
 	stored_filename = Column(String(512), nullable=True)
 	text = Column(Text, nullable=False)
+	status = Column(String(20), nullable=True, default="hold")  # hold, negotiating, signed
+	consent_notes = Column(Text, nullable=True)  # Notes about consent/usage categories
 	created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
 	user_id = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
 

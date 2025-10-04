@@ -22,6 +22,9 @@ RUN pip install --upgrade pip && pip install -r requirements.txt
 
 COPY app ./app
 
+# Create upload directory for file storage
+RUN mkdir -p /data/uploads
+
 EXPOSE 8000
 
 # Use Gunicorn with Uvicorn workers for production

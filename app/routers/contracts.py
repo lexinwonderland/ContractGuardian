@@ -55,9 +55,22 @@ async def upload_contract(
 		raise HTTPException(status_code=400, detail="No text could be extracted from the file.")
 
 	try:
-		stored_filename = os.path.join(UPLOAD_DIR, filename)
-		with open(stored_filename, "wb") as f:
+		# Store only the filename, not the full path
+		stored_filename = filename
+		full_path = os.path.join(UPLOAD_DIR, filename)
+		
+		# Debug logging for upload issues
+		print(f"Saving file to: {full_path}")
+		print(f"UPLOAD_DIR: {UPLOAD_DIR}")
+		print(f"File size: {len(data)} bytes")
+		
+		# Ensure upload directory exists
+		os.makedirs(UPLOAD_DIR, exist_ok=True)
+		
+		with open(full_path, "wb") as f:
 			f.write(data)
+		
+		print(f"File saved successfully: {os.path.isfile(full_path)}")
 
 		flags = analyze_text(text)
 
@@ -142,17 +155,19 @@ async def delete_contract(contract_id: int, db: Session = Depends(get_db), user:
 	contract = db.query(models.Contract).filter_by(id=contract_id, user_id=user.id).first()
 	if not contract:
 		raise HTTPException(status_code=404, detail="Not found")
-	stored_path = contract.stored_filename
+	stored_filename = contract.stored_filename
 	# Delete DB record (flags cascade via relationship)
 	db.delete(contract)
 	db.commit()
 	# Safely remove uploaded file if it exists and is within the uploads directory
 	try:
-		if stored_path and os.path.isfile(stored_path):
-			uploads_abs = os.path.abspath(UPLOAD_DIR)
-			file_abs = os.path.abspath(stored_path)
-			if os.path.commonpath([uploads_abs, file_abs]) == uploads_abs:
-				os.remove(file_abs)
+		if stored_filename:
+			full_path = os.path.join(UPLOAD_DIR, stored_filename)
+			if os.path.isfile(full_path):
+				uploads_abs = os.path.abspath(UPLOAD_DIR)
+				file_abs = os.path.abspath(full_path)
+				if os.path.commonpath([uploads_abs, file_abs]) == uploads_abs:
+					os.remove(file_abs)
 	except Exception:
 		# Ignore file delete errors to avoid masking API success
 		pass
@@ -162,6 +177,41 @@ async def delete_contract(contract_id: int, db: Session = Depends(get_db), user:
 @router.get("/file/{contract_id}")
 async def get_contract_file(contract_id: int, db: Session = Depends(get_db), user: models.User = Depends(get_current_user)):
 	contract = db.query(models.Contract).filter_by(id=contract_id, user_id=user.id).first()
-	if not contract or not contract.stored_filename or not os.path.isfile(contract.stored_filename):
+	if not contract or not contract.stored_filename:
 		raise HTTPException(status_code=404, detail="File not found")
-	return FileResponse(path=contract.stored_filename) 
+	
+	# Construct full path from UPLOAD_DIR + filename
+	full_path = os.path.join(UPLOAD_DIR, contract.stored_filename)
+	
+	# Debug logging for file serving issues
+	print(f"Looking for file: {full_path}")
+	print(f"UPLOAD_DIR: {UPLOAD_DIR}")
+	print(f"stored_filename: {contract.stored_filename}")
+	print(f"File exists: {os.path.isfile(full_path)}")
+	
+	if not os.path.isfile(full_path):
+		raise HTTPException(status_code=404, detail=f"File not found at {full_path}")
+	return FileResponse(path=full_path)
+
+
+@router.patch("/{contract_id}/status", response_model=schemas.ContractRead)
+async def update_contract_status(
+	contract_id: int, 
+	status_update: schemas.ContractStatusUpdate,
+	db: Session = Depends(get_db), 
+	user: models.User = Depends(get_current_user)
+):
+	contract = db.query(models.Contract).filter_by(id=contract_id, user_id=user.id).first()
+	if not contract:
+		raise HTTPException(status_code=404, detail="Contract not found")
+	
+	# Validate status
+	valid_statuses = ["hold", "negotiating", "signed"]
+	if status_update.status not in valid_statuses:
+		raise HTTPException(status_code=400, detail=f"Invalid status. Must be one of: {', '.join(valid_statuses)}")
+	
+	contract.status = status_update.status
+	contract.consent_notes = status_update.consent_notes
+	db.commit()
+	db.refresh(contract)
+	return contract 
