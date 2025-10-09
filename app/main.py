@@ -1,11 +1,13 @@
 from fastapi import FastAPI, Request
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
-from fastapi.responses import HTMLResponse, RedirectResponse
-from .database import init_db, engine
+from fastapi.responses import HTMLResponse, RedirectResponse, JSONResponse
+from .database import init_db, engine, get_db
 from .routers import contracts, auth
 from .auth import get_current_user
 from fastapi import HTTPException
+from sqlalchemy.orm import Session
+import os
 
 app = FastAPI(title="Contract Guardian")
 
@@ -63,4 +65,29 @@ async def login_page(request: Request):
 @app.get("/register", response_class=HTMLResponse)
 async def register_page(request: Request):
 	user = await get_auth_status(request)
-	return templates.TemplateResponse("register.html", {"request": request, "user": user}) 
+	return templates.TemplateResponse("register.html", {"request": request, "user": user})
+
+@app.get("/health")
+async def health_check():
+	"""Health check endpoint for monitoring"""
+	try:
+		# Check database connection
+		db = next(get_db())
+		db.execute("SELECT 1")
+		db.close()
+		
+		# Check upload directory
+		upload_dir = os.environ.get("UPLOAD_DIR", "uploads")
+		upload_dir_exists = os.path.exists(upload_dir)
+		
+		return JSONResponse({
+			"status": "healthy",
+			"database": "connected",
+			"upload_dir": upload_dir,
+			"upload_dir_exists": upload_dir_exists
+		})
+	except Exception as e:
+		return JSONResponse({
+			"status": "unhealthy",
+			"error": str(e)
+		}, status_code=503) 

@@ -28,6 +28,6 @@ RUN mkdir -p /data/uploads
 EXPOSE 8000
 
 # Use Gunicorn with Uvicorn workers for production
-CMD ["bash", "-lc", "exec gunicorn -k uvicorn.workers.UvicornWorker --timeout 120 -w ${WEB_CONCURRENCY:-2} -b 0.0.0.0:${PORT:-8000} app.main:app"]
+CMD ["bash", "-lc", "exec gunicorn -k uvicorn.workers.UvicornWorker --timeout 300 --graceful-timeout 30 --max-requests 1000 --max-requests-jitter 100 -w ${WEB_CONCURRENCY:-2} -b 0.0.0.0:${PORT:-8000} app.main:app"]
 
 

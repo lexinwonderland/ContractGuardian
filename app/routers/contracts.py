@@ -3,6 +3,10 @@ from sqlalchemy.orm import Session
 from typing import List, Optional
 from datetime import date
 import os
+import time
+import uuid
+import asyncio
+import psutil
 from fastapi.responses import FileResponse
 from ..database import get_db
 from .. import models, schemas
@@ -17,6 +21,27 @@ os.makedirs(UPLOAD_DIR, exist_ok=True)
 
 
 MAX_UPLOAD_BYTES = 10 * 1024 * 1024  # 10 MB
+ALLOWED_CONTENT_TYPES = {
+    "application/pdf",
+    "image/jpeg", "image/jpg", "image/png", "image/gif", "image/webp", "image/bmp",
+    "text/plain", "text/csv"
+}
+
+
+async def _extract_text_with_timeout(data: bytes, content_type: str, filename: str):
+	"""Extract text from file data with proper error handling"""
+	if content_type in ("application/pdf",) or filename.lower().endswith(".pdf"):
+		return extract_text_from_pdf_bytes(data)
+	elif content_type.startswith("image/"):
+		return extract_text_from_image_bytes(data)
+	else:
+		# Assume text
+		return data.decode("utf-8", errors="ignore"), None
+
+
+async def _analyze_text_with_timeout(text: str):
+	"""Analyze text with proper error handling"""
+	return analyze_text(text)
 
 
 @router.post("/upload", response_model=schemas.ContractRead)
@@ -29,77 +54,141 @@ async def upload_contract(
 	db: Session = Depends(get_db),
 	user: models.User = Depends(get_current_user),
 ):
-	# Size limit protection
-	if file.size and file.size > MAX_UPLOAD_BYTES:
-		raise HTTPException(status_code=413, detail="File too large (max 10 MB)")
-	filename = file.filename or "uploaded"
-	data = await file.read()
-	if len(data) > MAX_UPLOAD_BYTES:
-		raise HTTPException(status_code=413, detail="File too large (max 10 MB)")
-	text = ""
-	stored_filename = None
-
-	content_type = file.content_type or ""
+	request_id = str(uuid.uuid4())[:8]
+	start_time = time.time()
+	
 	try:
-		if content_type in ("application/pdf",) or filename.lower().endswith(".pdf"):
-			text, _ = extract_text_from_pdf_bytes(data)
-		elif content_type.startswith("image/"):
-			text = extract_text_from_image_bytes(data)
-		else:
-			# Assume text
-			text = data.decode("utf-8", errors="ignore")
-	except Exception as e:
-		raise HTTPException(status_code=400, detail=f"Failed to extract text: {e}")
-
-	if not text or not text.strip():
-		raise HTTPException(status_code=400, detail="No text could be extracted from the file.")
-
-	try:
-		# Store only the filename, not the full path
-		stored_filename = filename
-		full_path = os.path.join(UPLOAD_DIR, filename)
+		# Log request start
+		print(f"[{request_id}] Upload started - User: {user.id}, File: {file.filename}, Size: {file.size}")
 		
-		# Debug logging for upload issues
-		print(f"Saving file to: {full_path}")
-		print(f"UPLOAD_DIR: {UPLOAD_DIR}")
-		print(f"File size: {len(data)} bytes")
+		# Early size validation
+		if file.size and file.size > MAX_UPLOAD_BYTES:
+			print(f"[{request_id}] File too large: {file.size} bytes")
+			raise HTTPException(status_code=413, detail="File too large (max 10 MB)")
 		
-		# Ensure upload directory exists
-		os.makedirs(UPLOAD_DIR, exist_ok=True)
+		# Content type validation
+		content_type = file.content_type or ""
+		if content_type not in ALLOWED_CONTENT_TYPES and not any(filename.lower().endswith(ext) for ext in ['.pdf', '.jpg', '.jpeg', '.png', '.gif', '.webp', '.bmp', '.txt', '.csv']):
+			print(f"[{request_id}] Unsupported content type: {content_type}")
+			raise HTTPException(status_code=400, detail=f"Unsupported file type: {content_type}")
 		
-		with open(full_path, "wb") as f:
-			f.write(data)
+		# Read file data
+		filename = file.filename or "uploaded"
+		print(f"[{request_id}] Reading file data...")
+		data = await file.read()
 		
-		print(f"File saved successfully: {os.path.isfile(full_path)}")
-
-		flags = analyze_text(text)
-
-		contract = models.Contract(
-			title=title,
-			counterparty=counterparty,
-			production=production,
-			contract_date=contract_date,
-			stored_filename=stored_filename,
-			text=text,
-			user_id=user.id,
-		)
-		db.add(contract)
-		db.flush()
-
-		for flag in flags:
-			cf = models.ClauseFlag(contract_id=contract.id, **flag)
-			db.add(cf)
-
-		db.commit()
-		db.refresh(contract)
-		return contract
-	except Exception as e:
-		# Surface error details to client and logs to aid debugging on Render (avoid 502 with no message)
+		if len(data) > MAX_UPLOAD_BYTES:
+			print(f"[{request_id}] File too large after read: {len(data)} bytes")
+			raise HTTPException(status_code=413, detail="File too large (max 10 MB)")
+		
+		print(f"[{request_id}] File read complete: {len(data)} bytes, Memory: {psutil.Process().memory_info().rss / 1024 / 1024:.1f}MB")
+		
+		# Text extraction with timeout
+		text = ""
+		stored_filename = None
+		
+		print(f"[{request_id}] Starting text extraction...")
+		extraction_start = time.time()
+		
 		try:
-			print(f"Upload processing error: {e}")
-		except Exception:
-			pass
-		raise HTTPException(status_code=500, detail=f"Server error during upload: {e}")
+			# Add timeout for text extraction
+			extraction_task = asyncio.create_task(_extract_text_with_timeout(data, content_type, filename))
+			text, _ = await asyncio.wait_for(extraction_task, timeout=60.0)  # 60 second timeout
+			
+			extraction_time = time.time() - extraction_start
+			print(f"[{request_id}] Text extraction complete in {extraction_time:.2f}s, extracted {len(text)} chars")
+			
+		except asyncio.TimeoutError:
+			print(f"[{request_id}] Text extraction timed out after 60s")
+			raise HTTPException(status_code=408, detail="Text extraction timed out. Please try a smaller file.")
+		except Exception as e:
+			print(f"[{request_id}] Text extraction failed: {str(e)}")
+			raise HTTPException(status_code=400, detail=f"Failed to extract text: {str(e)}")
+
+		if not text or not text.strip():
+			print(f"[{request_id}] No text extracted from file")
+			raise HTTPException(status_code=400, detail="No text could be extracted from the file.")
+
+		# File saving with error handling
+		print(f"[{request_id}] Saving file to disk...")
+		try:
+			stored_filename = filename
+			full_path = os.path.join(UPLOAD_DIR, filename)
+			
+			# Ensure upload directory exists
+			os.makedirs(UPLOAD_DIR, exist_ok=True)
+			
+			with open(full_path, "wb") as f:
+				f.write(data)
+			
+			print(f"[{request_id}] File saved successfully: {os.path.isfile(full_path)}")
+		except Exception as e:
+			print(f"[{request_id}] File save failed: {str(e)}")
+			raise HTTPException(status_code=500, detail=f"Failed to save file: {str(e)}")
+
+		# Text analysis with timeout
+		print(f"[{request_id}] Starting text analysis...")
+		analysis_start = time.time()
+		
+		try:
+			# Limit text size for analysis to prevent memory issues
+			analysis_text = text[:50000] if len(text) > 50000 else text
+			if len(text) > 50000:
+				print(f"[{request_id}] Text truncated to 50k chars for analysis (original: {len(text)} chars)")
+			
+			analysis_task = asyncio.create_task(_analyze_text_with_timeout(analysis_text))
+			flags = await asyncio.wait_for(analysis_task, timeout=30.0)  # 30 second timeout
+			
+			analysis_time = time.time() - analysis_start
+			print(f"[{request_id}] Analysis complete in {analysis_time:.2f}s, found {len(flags)} flags")
+			
+		except asyncio.TimeoutError:
+			print(f"[{request_id}] Analysis timed out after 30s")
+			raise HTTPException(status_code=408, detail="Text analysis timed out. Please try a smaller file.")
+		except Exception as e:
+			print(f"[{request_id}] Analysis failed: {str(e)}")
+			raise HTTPException(status_code=500, detail=f"Text analysis failed: {str(e)}")
+
+		# Database operations with transaction safety
+		print(f"[{request_id}] Saving to database...")
+		try:
+			contract = models.Contract(
+				title=title,
+				counterparty=counterparty,
+				production=production,
+				contract_date=contract_date,
+				stored_filename=stored_filename,
+				text=text,
+				user_id=user.id,
+			)
+			db.add(contract)
+			db.flush()
+
+			for flag in flags:
+				cf = models.ClauseFlag(contract_id=contract.id, **flag)
+				db.add(cf)
+
+			db.commit()
+			db.refresh(contract)
+			
+			total_time = time.time() - start_time
+			print(f"[{request_id}] Upload complete in {total_time:.2f}s, Memory: {psutil.Process().memory_info().rss / 1024 / 1024:.1f}MB")
+			
+			return contract
+			
+		except Exception as e:
+			print(f"[{request_id}] Database error: {str(e)}")
+			db.rollback()
+			raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")
+			
+	except HTTPException:
+		# Re-raise HTTP exceptions as-is
+		raise
+	except Exception as e:
+		# Catch any unexpected errors
+		total_time = time.time() - start_time
+		print(f"[{request_id}] Unexpected error after {total_time:.2f}s: {str(e)}")
+		raise HTTPException(status_code=500, detail=f"Unexpected server error: {str(e)}")
 
 
 @router.post("/create", response_model=schemas.ContractRead)
