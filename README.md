@@ -53,6 +53,59 @@ uvicorn app.main:app --reload
 ```
 Open `http://127.0.0.1:8000`.
 
+## API
+
+### `POST /contracts/analyze`
+Authenticated endpoint that accepts a multipart form upload, runs OCR/text extraction, and streams the text through the ContractGuardian analyzer without saving anything to the database. This is useful when you only need a verdict from ContractGuardianGPT but do not want to keep the document on the platform.
+
+Form fields:
+
+| Field | Type | Required | Notes |
+| --- | --- | --- | --- |
+| `file` | File | ✅ | PDF, image, or plain-text documents up to 10 MB. OCR is triggered automatically for images/PDFs that lack extractable text. |
+| `title` | Text | ❌ | Optional context echoed back in the response. |
+| `counterparty` | Text | ❌ | Optional producer/person name. |
+| `production` | Text | ❌ | Optional show or production identifier. |
+| `contract_date` | Date | ❌ | Optional ISO date string. |
+
+Successful responses return JSON shaped like:
+
+```json
+{
+  "title": "Sample Contract",
+  "char_count": 12345,
+  "truncated_for_analysis": false,
+  "used_ocr": true,
+  "extraction_seconds": 2.41,
+  "analysis_seconds": 4.03,
+  "flags": [
+    {
+      "category": "Exclusivity",
+      "severity": "high",
+      "excerpt": "Performer grants exclusive rights…",
+      "explanation": "Explains why the clause is risky",
+      "guidance": "Suggested negotiation language",
+      "start_index": 102,
+      "end_index": 182
+    }
+  ],
+  "extracted_text_preview": "First 1,000 characters of extracted text…"
+}
+```
+
+Example `curl` request (after authenticating and storing the session cookie in `cookie.txt`):
+
+```bash
+curl -X POST \
+  -b cookie.txt \
+  -F "file=@/path/to/contract.pdf" \
+  -F "title=Sample Contract" \
+  https://your-app.example.com/contracts/analyze
+```
+
+### `POST /contracts/upload`
+Accepts the same multipart payload as `/contracts/analyze` but persists the contract, extracted text, and detected flags to the database so they appear in the dashboard. This is the endpoint used by the built-in upload form.
+
 ## Deploy (Docker)
 Build and run locally with Docker:
 

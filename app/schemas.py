@@ -61,5 +61,21 @@ class ContractListItem(BaseModel):
 
 
 class ContractStatusUpdate(BaseModel):
-	status: str
-	consent_notes: Optional[str] = None 
+        status: str
+        consent_notes: Optional[str] = None
+
+
+class ContractAnalysisResult(BaseModel):
+        title: Optional[str] = None
+        counterparty: Optional[str] = None
+        production: Optional[str] = None
+        contract_date: Optional[date] = None
+        filename: Optional[str] = None
+        content_type: Optional[str] = None
+        char_count: int
+        truncated_for_analysis: bool = False
+        used_ocr: Optional[bool] = None
+        extraction_seconds: float
+        analysis_seconds: float
+        flags: List[ClauseFlagBase] = []
+        extracted_text_preview: Optional[str] = None

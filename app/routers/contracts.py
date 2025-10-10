@@ -26,6 +26,40 @@ ALLOWED_CONTENT_TYPES = {
     "image/jpeg", "image/jpg", "image/png", "image/gif", "image/webp", "image/bmp",
     "text/plain", "text/csv"
 }
+ALLOWED_EXTENSIONS = (
+	".pdf",
+	".jpg", ".jpeg", ".png", ".gif", ".webp", ".bmp",
+	".txt", ".csv"
+)
+
+
+def _has_allowed_extension(filename: str) -> bool:
+	lower = filename.lower()
+	return any(lower.endswith(ext) for ext in ALLOWED_EXTENSIONS)
+
+
+async def _read_upload_file(file: UploadFile, request_id: str):
+	size = getattr(file, "size", None)
+	if size and size > MAX_UPLOAD_BYTES:
+		print(f"[{request_id}] File too large: {size} bytes")
+		raise HTTPException(status_code=413, detail="File too large (max 10 MB)")
+
+	filename = file.filename or "uploaded"
+	content_type = file.content_type or ""
+
+	if content_type not in ALLOWED_CONTENT_TYPES and not _has_allowed_extension(filename):
+		print(f"[{request_id}] Unsupported content type: {content_type} ({filename})")
+		raise HTTPException(status_code=400, detail=f"Unsupported file type: {content_type or filename}")
+
+	print(f"[{request_id}] Reading file data...")
+	data = await file.read()
+
+	if len(data) > MAX_UPLOAD_BYTES:
+		print(f"[{request_id}] File too large after read: {len(data)} bytes")
+		raise HTTPException(status_code=413, detail="File too large (max 10 MB)")
+
+	print(f"[{request_id}] File read complete: {len(data)} bytes, Memory: {psutil.Process().memory_info().rss / 1024 / 1024:.1f}MB")
+	return data, filename, content_type
 
 
 async def _extract_text_with_timeout(data: bytes, content_type: str, filename: str):
@@ -33,15 +67,85 @@ async def _extract_text_with_timeout(data: bytes, content_type: str, filename: s
 	if content_type in ("application/pdf",) or filename.lower().endswith(".pdf"):
 		return extract_text_from_pdf_bytes(data)
 	elif content_type.startswith("image/"):
-		return extract_text_from_image_bytes(data)
+		return extract_text_from_image_bytes(data), True
 	else:
 		# Assume text
 		return data.decode("utf-8", errors="ignore"), None
 
 
 async def _analyze_text_with_timeout(text: str):
-        """Analyze text with proper error handling"""
-        return await asyncio.to_thread(analyze_text, text)
+	"""Analyze text with proper error handling"""
+	return await asyncio.to_thread(analyze_text, text)
+
+
+@router.post("/analyze", response_model=schemas.ContractAnalysisResult)
+async def analyze_contract_action(
+	file: UploadFile = File(...),
+	title: Optional[str] = Form(None),
+	counterparty: Optional[str] = Form(None),
+	production: Optional[str] = Form(None),
+	contract_date: Optional[date] = Form(None),
+	user: models.User = Depends(get_current_user),
+):
+	request_id = str(uuid.uuid4())[:8]
+	start_time = time.time()
+
+	try:
+		size = getattr(file, "size", None)
+		print(f"[{request_id}] Analyze-only upload started - User: {user.id}, File: {file.filename}, Size: {size}")
+
+		data, filename, content_type = await _read_upload_file(file, request_id)
+
+		print(f"[{request_id}] Starting text extraction for analysis-only request...")
+		extraction_start = time.time()
+		extraction_task = asyncio.create_task(_extract_text_with_timeout(data, content_type, filename))
+		text, used_ocr = await asyncio.wait_for(extraction_task, timeout=60.0)
+		extraction_time = time.time() - extraction_start
+		print(f"[{request_id}] Extraction finished in {extraction_time:.2f}s, chars={len(text)}, used_ocr={used_ocr}")
+
+		if not text or not text.strip():
+			raise HTTPException(status_code=400, detail="No text could be extracted from the file.")
+
+		analysis_start = time.time()
+		text_length = len(text)
+		analysis_text = text[:50000] if text_length > 50000 else text
+		truncated = text_length > 50000
+		if truncated:
+			print(f"[{request_id}] Analysis text truncated to 50k chars (original {text_length})")
+
+		analysis_task = asyncio.create_task(_analyze_text_with_timeout(analysis_text))
+		flags = await asyncio.wait_for(analysis_task, timeout=30.0)
+		analysis_time = time.time() - analysis_start
+		print(f"[{request_id}] Analysis-only request completed in {analysis_time:.2f}s, flags={len(flags)}")
+
+		total_time = time.time() - start_time
+		print(f"[{request_id}] Analyze-only workflow complete in {total_time:.2f}s")
+
+		return schemas.ContractAnalysisResult(
+			title=title,
+			counterparty=counterparty,
+			production=production,
+			contract_date=contract_date,
+			filename=filename,
+			content_type=content_type,
+			char_count=text_length,
+			truncated_for_analysis=truncated,
+			used_ocr=used_ocr,
+			extraction_seconds=extraction_time,
+			analysis_seconds=analysis_time,
+			flags=flags,
+			extracted_text_preview=text[:1000],
+		)
+
+	except asyncio.TimeoutError:
+		print(f"[{request_id}] Analyze-only workflow timed out")
+		raise HTTPException(status_code=408, detail="Analysis timed out. Please try a smaller or simpler document.")
+	except HTTPException:
+		raise
+	except Exception as exc:
+		total_time = time.time() - start_time
+		print(f"[{request_id}] Analyze-only workflow failed after {total_time:.2f}s: {exc}")
+		raise HTTPException(status_code=500, detail=f"Unexpected error during analysis: {exc}")
 
 
 @router.post("/upload", response_model=schemas.ContractRead)
@@ -59,32 +163,14 @@ async def upload_contract(
 	
 	try:
 		# Log request start
-		print(f"[{request_id}] Upload started - User: {user.id}, File: {file.filename}, Size: {file.size}")
-		
-		# Early size validation
-		if file.size and file.size > MAX_UPLOAD_BYTES:
-			print(f"[{request_id}] File too large: {file.size} bytes")
-			raise HTTPException(status_code=413, detail="File too large (max 10 MB)")
-		
-		# Content type validation
-		content_type = file.content_type or ""
-		if content_type not in ALLOWED_CONTENT_TYPES and not any(filename.lower().endswith(ext) for ext in ['.pdf', '.jpg', '.jpeg', '.png', '.gif', '.webp', '.bmp', '.txt', '.csv']):
-			print(f"[{request_id}] Unsupported content type: {content_type}")
-			raise HTTPException(status_code=400, detail=f"Unsupported file type: {content_type}")
-		
-		# Read file data
-		filename = file.filename or "uploaded"
-		print(f"[{request_id}] Reading file data...")
-		data = await file.read()
-		
-		if len(data) > MAX_UPLOAD_BYTES:
-			print(f"[{request_id}] File too large after read: {len(data)} bytes")
-			raise HTTPException(status_code=413, detail="File too large (max 10 MB)")
-		
-		print(f"[{request_id}] File read complete: {len(data)} bytes, Memory: {psutil.Process().memory_info().rss / 1024 / 1024:.1f}MB")
-		
+		size = getattr(file, "size", None)
+		print(f"[{request_id}] Upload started - User: {user.id}, File: {file.filename}, Size: {size}")
+
+		data, filename, content_type = await _read_upload_file(file, request_id)
+
 		# Text extraction with timeout
 		text = ""
+		used_ocr = None
 		stored_filename = None
 		
 		print(f"[{request_id}] Starting text extraction...")
@@ -93,10 +179,10 @@ async def upload_contract(
 		try:
 			# Add timeout for text extraction
 			extraction_task = asyncio.create_task(_extract_text_with_timeout(data, content_type, filename))
-			text, _ = await asyncio.wait_for(extraction_task, timeout=60.0)  # 60 second timeout
-			
+			text, used_ocr = await asyncio.wait_for(extraction_task, timeout=60.0)  # 60 second timeout
+
 			extraction_time = time.time() - extraction_start
-			print(f"[{request_id}] Text extraction complete in {extraction_time:.2f}s, extracted {len(text)} chars")
+			print(f"[{request_id}] Text extraction complete in {extraction_time:.2f}s, extracted {len(text)} chars, used_ocr={used_ocr}")
 			
 		except asyncio.TimeoutError:
 			print(f"[{request_id}] Text extraction timed out after 60s")
@@ -132,8 +218,9 @@ async def upload_contract(
 		
 		try:
 			# Limit text size for analysis to prevent memory issues
-			analysis_text = text[:50000] if len(text) > 50000 else text
-			if len(text) > 50000:
+			text_length = len(text)
+			analysis_text = text[:50000] if text_length > 50000 else text
+			if text_length > 50000:
 				print(f"[{request_id}] Text truncated to 50k chars for analysis (original: {len(text)} chars)")
 			
 			analysis_task = asyncio.create_task(_analyze_text_with_timeout(analysis_text))
@@ -193,27 +280,27 @@ async def upload_contract(
 
 @router.post("/create", response_model=schemas.ContractRead)
 async def create_contract(
-        payload: schemas.ContractCreate,
-        db: Session = Depends(get_db),
-        user: models.User = Depends(get_current_user),
+	payload: schemas.ContractCreate,
+	db: Session = Depends(get_db),
+	user: models.User = Depends(get_current_user),
 ):
-        flags = await asyncio.to_thread(analyze_text, payload.text)
-        contract = models.Contract(
-                title=payload.title,
-                counterparty=payload.counterparty,
-                production=payload.production,
-                contract_date=payload.contract_date,
-                stored_filename=payload.stored_filename,
-                text=payload.text,
-                user_id=user.id,
-        )
-        db.add(contract)
-        db.flush()
-        for flag in flags:
-                db.add(models.ClauseFlag(contract_id=contract.id, **flag))
-        db.commit()
-        db.refresh(contract)
-        return contract
+	flags = await asyncio.to_thread(analyze_text, payload.text)
+	contract = models.Contract(
+		title=payload.title,
+		counterparty=payload.counterparty,
+		production=payload.production,
+		contract_date=payload.contract_date,
+		stored_filename=payload.stored_filename,
+		text=payload.text,
+		user_id=user.id,
+	)
+	db.add(contract)
+	db.flush()
+	for flag in flags:
+		db.add(models.ClauseFlag(contract_id=contract.id, **flag))
+	db.commit()
+	db.refresh(contract)
+	return contract
 
 
 @router.get("/list", response_model=List[schemas.ContractListItem])
