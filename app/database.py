@@ -34,16 +34,40 @@ def get_db():
 def init_db() -> None:
 	from . import models  # noqa: F401
 	Base.metadata.create_all(bind=engine)
-	# Ensure new columns/tables exist for SQLite deployments without migrations
+	
+	# Ensure new columns/tables exist for both SQLite and Postgres deployments
 	try:
 		with engine.begin() as conn:
-			# contracts.production
-			res = conn.exec_driver_sql("PRAGMA table_info(contracts)").fetchall()
-			cols = {row[1] for row in res}
-			if 'production' not in cols:
-				conn.exec_driver_sql("ALTER TABLE contracts ADD COLUMN production VARCHAR(255)")
-			if 'user_id' not in cols:
-				conn.exec_driver_sql("ALTER TABLE contracts ADD COLUMN user_id INTEGER")
-	except Exception:
+			if DATABASE_URL.startswith("sqlite"):
+				# SQLite column additions
+				res = conn.exec_driver_sql("PRAGMA table_info(contracts)").fetchall()
+				cols = {row[1] for row in res}
+				if 'production' not in cols:
+					conn.exec_driver_sql("ALTER TABLE contracts ADD COLUMN production VARCHAR(255)")
+				if 'user_id' not in cols:
+					conn.exec_driver_sql("ALTER TABLE contracts ADD COLUMN user_id INTEGER")
+				if 'status' not in cols:
+					conn.exec_driver_sql("ALTER TABLE contracts ADD COLUMN status VARCHAR(20)")
+				if 'consent_notes' not in cols:
+					conn.exec_driver_sql("ALTER TABLE contracts ADD COLUMN consent_notes TEXT")
+			else:
+				# Postgres column additions
+				res = conn.exec_driver_sql("""
+					SELECT column_name 
+					FROM information_schema.columns 
+					WHERE table_name = 'contracts'
+				""").fetchall()
+				cols = {row[0] for row in res}
+				
+				if 'production' not in cols:
+					conn.exec_driver_sql("ALTER TABLE contracts ADD COLUMN production VARCHAR(255)")
+				if 'user_id' not in cols:
+					conn.exec_driver_sql("ALTER TABLE contracts ADD COLUMN user_id INTEGER")
+				if 'status' not in cols:
+					conn.exec_driver_sql("ALTER TABLE contracts ADD COLUMN status VARCHAR(20)")
+				if 'consent_notes' not in cols:
+					conn.exec_driver_sql("ALTER TABLE contracts ADD COLUMN consent_notes TEXT")
+	except Exception as e:
 		# Best-effort column addition; ignore if not applicable
+		print(f"Database column addition warning: {e}")
 		pass 
