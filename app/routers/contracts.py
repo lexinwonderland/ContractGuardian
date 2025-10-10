@@ -40,8 +40,8 @@ async def _extract_text_with_timeout(data: bytes, content_type: str, filename: s
 
 
 async def _analyze_text_with_timeout(text: str):
-	"""Analyze text with proper error handling"""
-	return analyze_text(text)
+        """Analyze text with proper error handling"""
+        return await asyncio.to_thread(analyze_text, text)
 
 
 @router.post("/upload", response_model=schemas.ContractRead)
@@ -193,27 +193,27 @@ async def upload_contract(
 
 @router.post("/create", response_model=schemas.ContractRead)
 async def create_contract(
-	payload: schemas.ContractCreate,
-	db: Session = Depends(get_db),
-	user: models.User = Depends(get_current_user),
+        payload: schemas.ContractCreate,
+        db: Session = Depends(get_db),
+        user: models.User = Depends(get_current_user),
 ):
-	flags = analyze_text(payload.text)
-	contract = models.Contract(
-		title=payload.title,
-		counterparty=payload.counterparty,
-		production=payload.production,
-		contract_date=payload.contract_date,
-		stored_filename=payload.stored_filename,
-		text=payload.text,
-		user_id=user.id,
-	)
-	db.add(contract)
-	db.flush()
-	for flag in flags:
-		db.add(models.ClauseFlag(contract_id=contract.id, **flag))
-	db.commit()
-	db.refresh(contract)
-	return contract
+        flags = await asyncio.to_thread(analyze_text, payload.text)
+        contract = models.Contract(
+                title=payload.title,
+                counterparty=payload.counterparty,
+                production=payload.production,
+                contract_date=payload.contract_date,
+                stored_filename=payload.stored_filename,
+                text=payload.text,
+                user_id=user.id,
+        )
+        db.add(contract)
+        db.flush()
+        for flag in flags:
+                db.add(models.ClauseFlag(contract_id=contract.id, **flag))
+        db.commit()
+        db.refresh(contract)
+        return contract
 
 
 @router.get("/list", response_model=List[schemas.ContractListItem])
