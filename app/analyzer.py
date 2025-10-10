@@ -1,6 +1,9 @@
 from dataclasses import dataclass
-from typing import List
+from typing import Any, Dict, List, Optional
+import os
 import re
+
+import httpx
 
 
 @dataclass
@@ -10,6 +13,11 @@ class Rule:
 	pattern: re.Pattern
 	explanation: str
 	guidance: str
+
+
+API_URL = os.environ.get("CONTRACTGUARDIAN_GPT_API_URL")
+API_KEY = os.environ.get("CONTRACTGUARDIAN_GPT_API_KEY")
+API_TIMEOUT = float(os.environ.get("CONTRACTGUARDIAN_GPT_TIMEOUT", "30"))
 
 
 def _rules() -> List[Rule]:
@@ -131,23 +139,168 @@ def _rules() -> List[Rule]:
             explanation="Very broad or perpetual rights language detected (e.g., universe-wide, all media, present/future devices, perpetual name/image use). Such terms can permanently transfer or license your rights without limits.",
             guidance="Ask to limit scope (specific uses), territory, and term; remove universe-wide and perpetual language; require approvals for edits (alter/dub/revise) and name/likeness uses; consult union/agent or counsel."
         ),
-	]
+        ]
 
 
-def analyze_text(text: str):
-	flags = []
-	for rule in _rules():
-		for match in rule.pattern.finditer(text or ""):
-			start = match.start()
-			end = match.end()
-			excerpt = text[max(0, start - 80): min(len(text), end + 80)]
-			flags.append({
-				"category": rule.category,
-				"severity": rule.severity,
-				"start_index": start,
-				"end_index": end,
-				"excerpt": excerpt,
-				"explanation": rule.explanation,
-				"guidance": rule.guidance,
-			})
-	return flags 
+def _normalise_string(value: Optional[Any]) -> Optional[str]:
+        if value is None:
+                return None
+        if isinstance(value, list):
+                return " ".join(filter(None, (str(v).strip() for v in value))) or None
+        return str(value).strip() or None
+
+
+def _normalise_severity(value: Optional[Any]) -> str:
+        if not value:
+                return "medium"
+        severity = str(value).strip().lower()
+        mapping = {
+                "critical": "high",
+                "severe": "high",
+                "warning": "medium",
+                "moderate": "medium",
+                "info": "low",
+                "informational": "low",
+        }
+        severity = mapping.get(severity, severity)
+        return severity if severity in {"low", "medium", "high"} else "medium"
+
+
+def _coerce_int(value: Optional[Any]) -> Optional[int]:
+        try:
+                return int(value) if value is not None else None
+        except (TypeError, ValueError):
+                return None
+
+
+def _snippet(text: str, start: Optional[int], end: Optional[int]) -> Optional[str]:
+        if start is None or end is None:
+                return None
+        start = max(0, start)
+        end = min(len(text), end)
+        window = 80
+        excerpt_start = max(0, start - window)
+        excerpt_end = min(len(text), end + window)
+        return text[excerpt_start:excerpt_end]
+
+
+def _extract_flags(payload: Any) -> List[Dict[str, Any]]:
+        if isinstance(payload, list):
+                return payload
+        if isinstance(payload, dict):
+                for key in ("flags", "findings", "issues", "clauses", "highlights"):
+                        items = payload.get(key)
+                        if isinstance(items, list):
+                                return items
+                        if isinstance(items, dict):
+                                nested = _extract_flags(items)
+                                if nested:
+                                        return nested
+        return []
+
+
+def _normalise_flag(raw_flag: Dict[str, Any], text: str) -> Dict[str, Any]:
+        start = _coerce_int(
+                raw_flag.get("start")
+                or raw_flag.get("start_index")
+                or raw_flag.get("start_char")
+                or raw_flag.get("startOffset")
+                or raw_flag.get("offset_start")
+        )
+        end = _coerce_int(
+                raw_flag.get("end")
+                or raw_flag.get("end_index")
+                or raw_flag.get("end_char")
+                or raw_flag.get("endOffset")
+                or raw_flag.get("offset_end")
+        )
+
+        explanation = _normalise_string(
+                raw_flag.get("explanation")
+                or raw_flag.get("analysis")
+                or raw_flag.get("reason")
+                or raw_flag.get("why")
+                or raw_flag.get("summary")
+        )
+        guidance = _normalise_string(
+                raw_flag.get("guidance")
+                or raw_flag.get("next_steps")
+                or raw_flag.get("recommendation")
+                or raw_flag.get("action")
+                or raw_flag.get("guidance_text")
+        )
+
+        excerpt = _normalise_string(
+                raw_flag.get("excerpt")
+                or raw_flag.get("quote")
+                or raw_flag.get("text")
+                or raw_flag.get("clause")
+        )
+
+        if not excerpt:
+                excerpt = _snippet(text, start, end)
+
+        return {
+                "category": _normalise_string(raw_flag.get("category") or raw_flag.get("label") or raw_flag.get("type")) or "General",
+                "severity": _normalise_severity(raw_flag.get("severity") or raw_flag.get("risk") or raw_flag.get("risk_level")),
+                "start_index": start,
+                "end_index": end,
+                "excerpt": excerpt,
+                "explanation": explanation or "Potential risk identified in this clause.",
+                "guidance": guidance or "Discuss revisions or clarifications with the counterparty or your representative.",
+        }
+
+
+def _call_remote_analyzer(text: str) -> Optional[List[Dict[str, Any]]]:
+        if not API_URL:
+                return None
+
+        headers = {"Content-Type": "application/json"}
+        if API_KEY:
+                headers["Authorization"] = f"Bearer {API_KEY}"
+
+        try:
+                response = httpx.post(
+                        API_URL,
+                        json={"text": text},
+                        headers=headers,
+                        timeout=API_TIMEOUT,
+                )
+                response.raise_for_status()
+                payload = response.json()
+                raw_flags = _extract_flags(payload)
+                return [_normalise_flag(f or {}, text) for f in raw_flags]
+        except httpx.HTTPError as exc:
+                print(f"[analyzer] Remote API request failed: {exc}")
+        except ValueError as exc:
+                print(f"[analyzer] Failed to parse API response: {exc}")
+        except Exception as exc:
+                print(f"[analyzer] Unexpected error during API call: {exc}")
+
+        return None
+
+
+def _analyze_text_locally(text: str) -> List[Dict[str, Any]]:
+        flags: List[Dict[str, Any]] = []
+        for rule in _rules():
+                for match in rule.pattern.finditer(text or ""):
+                        start = match.start()
+                        end = match.end()
+                        excerpt = text[max(0, start - 80): min(len(text), end + 80)]
+                        flags.append({
+                                "category": rule.category,
+                                "severity": rule.severity,
+                                "start_index": start,
+                                "end_index": end,
+                                "excerpt": excerpt,
+                                "explanation": rule.explanation,
+                                "guidance": rule.guidance,
+                        })
+        return flags
+
+
+def analyze_text(text: str) -> List[Dict[str, Any]]:
+        remote_flags = _call_remote_analyzer(text)
+        if remote_flags is not None:
+                return remote_flags
+        return _analyze_text_locally(text)

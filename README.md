@@ -76,6 +76,12 @@ web: gunicorn -k uvicorn.workers.UvicornWorker -w ${WEB_CONCURRENCY:-2} -b 0.0.0
 - `CG_COOKIE_SECURE` (default: 0): set to `1` in production
 - `CG_COOKIE_SAMESITE` (default: `lax`): `lax|strict|none`
 - `CG_COOKIE_DOMAIN` (optional): cookie domain like `.example.com`
+- `CONTRACTGUARDIAN_GPT_API_URL` (optional): HTTPS endpoint for ContractGuardianGPT analysis
+- `CONTRACTGUARDIAN_GPT_API_KEY` (optional): Bearer token sent to the ContractGuardianGPT API
+- `CONTRACTGUARDIAN_GPT_TIMEOUT` (optional, default `30` seconds): request timeout for the API
+
+If the GPT API variables are not set (or the request fails), the app falls back to the built-in
+rule-based analyzer so uploads continue to succeed.
 
 ## Notes
 - If a PDF has extractable text, OCR is skipped. Otherwise pages are rasterized and sent to Tesseract.
