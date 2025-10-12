@@ -28,15 +28,17 @@ class Contract(Base):
 	text = Column(Text, nullable=False)
 	status = Column(String(20), nullable=True, default="hold")  # hold, negotiating, signed
 	consent_notes = Column(Text, nullable=True)  # Notes about consent/usage categories
-	# GPT Analysis fields (optional - may not exist in older databases)
-	gpt_summary = Column(Text, nullable=True, default=None)  # GPT-generated summary
-	gpt_key_risks = Column(Text, nullable=True, default=None)  # JSON string of key risks
-	gpt_recommendations = Column(Text, nullable=True, default=None)  # JSON string of recommendations
-	gpt_overall_assessment = Column(Text, nullable=True, default=None)  # Overall assessment
-	gpt_confidence_score = Column(String(10), nullable=True, default=None)  # Confidence score
-	gpt_analysis_date = Column(DateTime, nullable=True, default=None)  # When GPT analysis was performed
 	created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
 	user_id = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+	
+	# GPT Analysis fields - temporarily commented out until database migration
+	# Uncomment these after running the database migration script
+	# gpt_summary = Column(Text, nullable=True, default=None)  # GPT-generated summary
+	# gpt_key_risks = Column(Text, nullable=True, default=None)  # JSON string of key risks
+	# gpt_recommendations = Column(Text, nullable=True, default=None)  # JSON string of recommendations
+	# gpt_overall_assessment = Column(Text, nullable=True, default=None)  # Overall assessment
+	# gpt_confidence_score = Column(String(10), nullable=True, default=None)  # Confidence score
+	# gpt_analysis_date = Column(DateTime, nullable=True, default=None)  # When GPT analysis was performed
 
 	user = relationship("User", back_populates="contracts")
 	flags = relationship("ClauseFlag", back_populates="contract", cascade="all, delete-orphan")

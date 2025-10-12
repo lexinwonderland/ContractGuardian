@@ -38,13 +38,13 @@ class ContractRead(ContractBase):
 	text: str
 	status: Optional[str] = None
 	consent_notes: Optional[str] = None
-	# GPT Analysis fields
-	gpt_summary: Optional[str] = None
-	gpt_key_risks: Optional[str] = None  # JSON string
-	gpt_recommendations: Optional[str] = None  # JSON string
-	gpt_overall_assessment: Optional[str] = None
-	gpt_confidence_score: Optional[str] = None
-	gpt_analysis_date: Optional[datetime] = None
+	# GPT Analysis fields - temporarily commented out until database migration
+	# gpt_summary: Optional[str] = None
+	# gpt_key_risks: Optional[str] = None  # JSON string
+	# gpt_recommendations: Optional[str] = None  # JSON string
+	# gpt_overall_assessment: Optional[str] = None
+	# gpt_confidence_score: Optional[str] = None
+	# gpt_analysis_date: Optional[datetime] = None
 	created_at: datetime
 	flags: List[ClauseFlagRead] = []
 

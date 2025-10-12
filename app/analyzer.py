@@ -196,37 +196,21 @@ async def analyze_contract_comprehensive(text: str, contract_title: str = "Contr
 def save_gpt_analysis_to_contract(contract, gpt_analysis: GPTAnalysisResult):
 	"""
 	Save GPT analysis results to a contract model instance
+	Note: This function is temporarily disabled until database migration is complete
 	"""
 	if gpt_analysis:
-		try:
-			contract.gpt_summary = gpt_analysis.summary
-			contract.gpt_key_risks = json.dumps(gpt_analysis.key_risks)
-			contract.gpt_recommendations = json.dumps(gpt_analysis.recommendations)
-			contract.gpt_overall_assessment = gpt_analysis.overall_assessment
-			contract.gpt_confidence_score = str(gpt_analysis.confidence_score)
-			contract.gpt_analysis_date = datetime.utcnow()
-		except AttributeError as e:
-			# GPT columns don't exist in the database yet
-			print(f"Warning: GPT analysis columns not available: {e}")
-			raise
+		# GPT columns are temporarily commented out in the model
+		# This function will work again after running the database migration
+		print("Warning: GPT analysis saving is temporarily disabled until database migration")
+		pass
 
 
 def get_gpt_analysis_from_contract(contract) -> Optional[dict]:
 	"""
 	Retrieve GPT analysis results from a contract model instance
+	Note: This function is temporarily disabled until database migration is complete
 	"""
-	if not contract.gpt_summary:
-		return None
-	
-	try:
-		return {
-			"summary": contract.gpt_summary,
-			"key_risks": json.loads(contract.gpt_key_risks) if contract.gpt_key_risks else [],
-			"recommendations": json.loads(contract.gpt_recommendations) if contract.gpt_recommendations else [],
-			"overall_assessment": contract.gpt_overall_assessment,
-			"confidence_score": float(contract.gpt_confidence_score) if contract.gpt_confidence_score else 0.0,
-			"analysis_date": contract.gpt_analysis_date.isoformat() if contract.gpt_analysis_date else None
-		}
-	except (json.JSONDecodeError, ValueError) as e:
-		print(f"Error parsing GPT analysis from contract: {e}")
-		return None 
+	# GPT columns are temporarily commented out in the model
+	# This function will work again after running the database migration
+	print("Warning: GPT analysis retrieval is temporarily disabled until database migration")
+	return None 
