@@ -8,6 +8,10 @@ from .auth import get_current_user
 from fastapi import HTTPException
 from sqlalchemy.orm import Session
 import os
+from dotenv import load_dotenv
+
+# Load environment variables from .env file
+load_dotenv()
 
 app = FastAPI(title="Contract Guardian")
 

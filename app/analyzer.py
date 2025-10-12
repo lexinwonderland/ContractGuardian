@@ -1,6 +1,9 @@
 from dataclasses import dataclass
-from typing import List
+from typing import List, Optional
 import re
+import json
+from datetime import datetime
+from .openai_service import openai_service, GPTAnalysisResult
 
 
 @dataclass
@@ -150,4 +153,74 @@ def analyze_text(text: str):
 				"explanation": rule.explanation,
 				"guidance": rule.guidance,
 			})
-	return flags 
+	return flags
+
+
+async def analyze_contract_comprehensive(text: str, contract_title: str = "Contract") -> dict:
+	"""
+	Perform comprehensive contract analysis using both rule-based and GPT analysis
+	Returns a dictionary with both rule-based flags and GPT analysis results
+	"""
+	# Perform rule-based analysis
+	rule_flags = analyze_text(text)
+	
+	# Perform GPT analysis if available
+	gpt_analysis = None
+	if openai_service.is_available():
+		try:
+			gpt_analysis = await openai_service.analyze_contract_with_gpt(text, contract_title)
+		except Exception as e:
+			print(f"GPT analysis failed: {e}")
+	
+	# Prepare result
+	result = {
+		"rule_based_flags": rule_flags,
+		"gpt_analysis": None,
+		"analysis_timestamp": datetime.utcnow().isoformat()
+	}
+	
+	# Add GPT analysis if available
+	if gpt_analysis:
+		result["gpt_analysis"] = {
+			"summary": gpt_analysis.summary,
+			"key_risks": gpt_analysis.key_risks,
+			"recommendations": gpt_analysis.recommendations,
+			"overall_assessment": gpt_analysis.overall_assessment,
+			"confidence_score": gpt_analysis.confidence_score
+		}
+	
+	return result
+
+
+def save_gpt_analysis_to_contract(contract, gpt_analysis: GPTAnalysisResult):
+	"""
+	Save GPT analysis results to a contract model instance
+	"""
+	if gpt_analysis:
+		contract.gpt_summary = gpt_analysis.summary
+		contract.gpt_key_risks = json.dumps(gpt_analysis.key_risks)
+		contract.gpt_recommendations = json.dumps(gpt_analysis.recommendations)
+		contract.gpt_overall_assessment = gpt_analysis.overall_assessment
+		contract.gpt_confidence_score = str(gpt_analysis.confidence_score)
+		contract.gpt_analysis_date = datetime.utcnow()
+
+
+def get_gpt_analysis_from_contract(contract) -> Optional[dict]:
+	"""
+	Retrieve GPT analysis results from a contract model instance
+	"""
+	if not contract.gpt_summary:
+		return None
+	
+	try:
+		return {
+			"summary": contract.gpt_summary,
+			"key_risks": json.loads(contract.gpt_key_risks) if contract.gpt_key_risks else [],
+			"recommendations": json.loads(contract.gpt_recommendations) if contract.gpt_recommendations else [],
+			"overall_assessment": contract.gpt_overall_assessment,
+			"confidence_score": float(contract.gpt_confidence_score) if contract.gpt_confidence_score else 0.0,
+			"analysis_date": contract.gpt_analysis_date.isoformat() if contract.gpt_analysis_date else None
+		}
+	except (json.JSONDecodeError, ValueError) as e:
+		print(f"Error parsing GPT analysis from contract: {e}")
+		return None 

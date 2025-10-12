@@ -29,6 +29,8 @@
 	}
 	fetch(`/contracts/${id}`, { credentials: 'include' }).then(r=>r.json()).then(c => {
 		root.innerHTML = renderContract(c);
+		// Load GPT analysis if available
+		loadGPTAnalysis(id);
 	});
 	function renderContract(c){
 		const flags = (c.flags||[]).map(f => `
@@ -80,6 +82,18 @@
 			  <ul class="flags" style="margin-top:0">${flags}</ul>
 			</div>
 			`}
+			<div id="gpt-analysis-section" style="border:1px solid #e5e7eb;background:#fff;border-radius:12px;padding:16px 20px;margin-top:16px">
+				<h3 style="margin:0 0 12px 0;font-size:18px;font-weight:600;color:#111827">AI Analysis</h3>
+				<div id="gpt-analysis-content">
+					<button id="analyze-gpt-btn" onclick="analyzeWithGPT(${c.id})" style="background:#3b82f6;color:white;border:none;padding:8px 16px;border-radius:6px;cursor:pointer;font-size:14px">
+						🤖 Analyze with GPT
+					</button>
+					<div id="gpt-loading" style="display:none;margin-top:12px;color:#6b7280">
+						Analyzing contract with AI...
+					</div>
+					<div id="gpt-results" style="display:none;margin-top:12px"></div>
+				</div>
+			</div>
 			<div style="border:1px solid #e5e7eb;background:#fff;border-radius:12px;padding:16px 20px;margin-top:16px">
 				<details>
 					<summary style="font-size:18px;font-weight:600;color:#111827">Full Text</summary>
@@ -96,6 +110,90 @@
 		if (res.ok) {
 			location.href = '/';
 		}
+	}
+	
+	async function loadGPTAnalysis(contractId) {
+		try {
+			const response = await fetch(`/contracts/${contractId}/gpt-analysis`, { credentials: 'include' });
+			if (response.ok) {
+				const analysis = await response.json();
+				displayGPTAnalysis(analysis);
+			}
+		} catch (error) {
+			console.log('No existing GPT analysis found');
+		}
+	}
+	
+	async function analyzeWithGPT(contractId) {
+		const btn = document.getElementById('analyze-gpt-btn');
+		const loading = document.getElementById('gpt-loading');
+		const results = document.getElementById('gpt-results');
+		
+		btn.style.display = 'none';
+		loading.style.display = 'block';
+		results.style.display = 'none';
+		
+		try {
+			const response = await fetch(`/contracts/${contractId}/analyze-gpt`, {
+				method: 'POST',
+				credentials: 'include'
+			});
+			
+			if (response.ok) {
+				const data = await response.json();
+				displayGPTAnalysis(data.gpt_analysis);
+			} else {
+				const error = await response.json();
+				results.innerHTML = `<div style="color:#dc2626;padding:12px;background:#fef2f2;border-radius:6px">Error: ${error.detail}</div>`;
+				results.style.display = 'block';
+			}
+		} catch (error) {
+			results.innerHTML = `<div style="color:#dc2626;padding:12px;background:#fef2f2;border-radius:6px">Error: ${error.message}</div>`;
+			results.style.display = 'block';
+		} finally {
+			loading.style.display = 'none';
+		}
+	}
+	
+	function displayGPTAnalysis(analysis) {
+		const results = document.getElementById('gpt-results');
+		const btn = document.getElementById('analyze-gpt-btn');
+		
+		if (!analysis) return;
+		
+		const risks = (analysis.key_risks || []).map(risk => `
+			<div style="margin-bottom:8px;padding:8px;background:#fef3c7;border-radius:4px">
+				<strong>${escapeHtml(risk.risk || 'Risk')}</strong>
+				<div style="font-size:14px;color:#92400e">${escapeHtml(risk.impact || '')}</div>
+			</div>
+		`).join('');
+		
+		const recommendations = (analysis.recommendations || []).map(rec => `
+			<li style="margin-bottom:4px">${escapeHtml(rec)}</li>
+		`).join('');
+		
+		results.innerHTML = `
+			<div style="border:1px solid #d1d5db;background:#f9fafb;border-radius:8px;padding:16px">
+				<h4 style="margin:0 0 12px 0;font-size:16px;font-weight:600;color:#111827">Summary</h4>
+				<p style="margin:0 0 16px 0;line-height:1.6;color:#374151">${escapeHtml(analysis.summary)}</p>
+				
+				<h4 style="margin:0 0 12px 0;font-size:16px;font-weight:600;color:#111827">Key Risks</h4>
+				<div style="margin-bottom:16px">${risks || '<p style="color:#6b7280;font-style:italic">No specific risks identified</p>'}</div>
+				
+				<h4 style="margin:0 0 12px 0;font-size:16px;font-weight:600;color:#111827">Recommendations</h4>
+				<ul style="margin:0 0 16px 0;padding-left:20px;line-height:1.6;color:#374151">${recommendations || '<li style="color:#6b7280;font-style:italic">No specific recommendations</li>'}</ul>
+				
+				<h4 style="margin:0 0 12px 0;font-size:16px;font-weight:600;color:#111827">Overall Assessment</h4>
+				<p style="margin:0;line-height:1.6;color:#374151">${escapeHtml(analysis.overall_assessment)}</p>
+				
+				<div style="margin-top:12px;padding-top:12px;border-top:1px solid #e5e7eb;font-size:14px;color:#6b7280">
+					Confidence Score: ${Math.round((analysis.confidence_score || 0) * 100)}%
+				</div>
+			</div>
+		`;
+		
+		results.style.display = 'block';
+		btn.style.display = 'none';
 	}
 	</script>
 </body>

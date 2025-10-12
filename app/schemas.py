@@ -1,5 +1,5 @@
 from datetime import date, datetime
-from typing import List, Optional
+from typing import List, Optional, Dict, Any
 from pydantic import BaseModel
 
 
@@ -38,6 +38,13 @@ class ContractRead(ContractBase):
 	text: str
 	status: Optional[str] = None
 	consent_notes: Optional[str] = None
+	# GPT Analysis fields
+	gpt_summary: Optional[str] = None
+	gpt_key_risks: Optional[str] = None  # JSON string
+	gpt_recommendations: Optional[str] = None  # JSON string
+	gpt_overall_assessment: Optional[str] = None
+	gpt_confidence_score: Optional[str] = None
+	gpt_analysis_date: Optional[datetime] = None
 	created_at: datetime
 	flags: List[ClauseFlagRead] = []
 
@@ -62,4 +69,22 @@ class ContractListItem(BaseModel):
 
 class ContractStatusUpdate(BaseModel):
 	status: str
-	consent_notes: Optional[str] = None 
+	consent_notes: Optional[str] = None
+
+
+class GPTAnalysisResponse(BaseModel):
+	summary: str
+	key_risks: List[Dict[str, str]]
+	recommendations: List[str]
+	overall_assessment: str
+	confidence_score: float
+	analysis_date: Optional[str] = None
+
+
+class GPTAdviceRequest(BaseModel):
+	question: str
+	contract_id: Optional[int] = None
+
+
+class GPTAdviceResponse(BaseModel):
+	advice: str 

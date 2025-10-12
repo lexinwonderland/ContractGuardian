@@ -20,6 +20,8 @@ services:
         fromDatabase:
           name: contract-guardian-db
           property: connectionString
+      - key: OPENAI_API_KEY
+        sync: false
     disk:
       name: cg-data
       mountPath: /data

@@ -11,7 +11,8 @@ from fastapi.responses import FileResponse
 from ..database import get_db
 from .. import models, schemas
 from ..ocr import extract_text_from_pdf_bytes, extract_text_from_image_bytes
-from ..analyzer import analyze_text
+from ..analyzer import analyze_text, analyze_contract_comprehensive, save_gpt_analysis_to_contract, get_gpt_analysis_from_contract
+from ..openai_service import openai_service
 from ..auth import get_current_user
 
 router = APIRouter()
@@ -126,8 +127,8 @@ async def upload_contract(
 			print(f"[{request_id}] File save failed: {str(e)}")
 			raise HTTPException(status_code=500, detail=f"Failed to save file: {str(e)}")
 
-		# Text analysis with timeout
-		print(f"[{request_id}] Starting text analysis...")
+		# Comprehensive text analysis with timeout (rule-based + GPT)
+		print(f"[{request_id}] Starting comprehensive text analysis...")
 		analysis_start = time.time()
 		
 		try:
@@ -136,14 +137,18 @@ async def upload_contract(
 			if len(text) > 50000:
 				print(f"[{request_id}] Text truncated to 50k chars for analysis (original: {len(text)} chars)")
 			
-			analysis_task = asyncio.create_task(_analyze_text_with_timeout(analysis_text))
-			flags = await asyncio.wait_for(analysis_task, timeout=30.0)  # 30 second timeout
+			# Use comprehensive analysis (rule-based + GPT)
+			analysis_task = asyncio.create_task(analyze_contract_comprehensive(analysis_text, title))
+			analysis_result = await asyncio.wait_for(analysis_task, timeout=60.0)  # 60 second timeout for GPT
+			
+			flags = analysis_result["rule_based_flags"]
+			gpt_analysis = analysis_result.get("gpt_analysis")
 			
 			analysis_time = time.time() - analysis_start
-			print(f"[{request_id}] Analysis complete in {analysis_time:.2f}s, found {len(flags)} flags")
+			print(f"[{request_id}] Analysis complete in {analysis_time:.2f}s, found {len(flags)} rule-based flags, GPT analysis: {'Yes' if gpt_analysis else 'No'}")
 			
 		except asyncio.TimeoutError:
-			print(f"[{request_id}] Analysis timed out after 30s")
+			print(f"[{request_id}] Analysis timed out after 60s")
 			raise HTTPException(status_code=408, detail="Text analysis timed out. Please try a smaller file.")
 		except Exception as e:
 			print(f"[{request_id}] Analysis failed: {str(e)}")
@@ -164,9 +169,22 @@ async def upload_contract(
 			db.add(contract)
 			db.flush()
 
+			# Save rule-based flags
 			for flag in flags:
 				cf = models.ClauseFlag(contract_id=contract.id, **flag)
 				db.add(cf)
+			
+			# Save GPT analysis if available
+			if gpt_analysis:
+				from ..openai_service import GPTAnalysisResult
+				gpt_result = GPTAnalysisResult(
+					summary=gpt_analysis["summary"],
+					key_risks=gpt_analysis["key_risks"],
+					recommendations=gpt_analysis["recommendations"],
+					overall_assessment=gpt_analysis["overall_assessment"],
+					confidence_score=gpt_analysis["confidence_score"]
+				)
+				save_gpt_analysis_to_contract(contract, gpt_result)
 
 			db.commit()
 			db.refresh(contract)
@@ -303,4 +321,90 @@ async def update_contract_status(
 	contract.consent_notes = status_update.consent_notes
 	db.commit()
 	db.refresh(contract)
-	return contract 
+	return contract
+
+
+@router.post("/{contract_id}/analyze-gpt")
+async def analyze_contract_with_gpt(
+	contract_id: int,
+	db: Session = Depends(get_db),
+	user: models.User = Depends(get_current_user)
+):
+	"""Re-analyze a contract with GPT"""
+	contract = db.query(models.Contract).filter_by(id=contract_id, user_id=user.id).first()
+	if not contract:
+		raise HTTPException(status_code=404, detail="Contract not found")
+	
+	if not openai_service.is_available():
+		raise HTTPException(status_code=503, detail="GPT analysis not available - API key not configured")
+	
+	try:
+		# Perform GPT analysis
+		gpt_analysis = await openai_service.analyze_contract_with_gpt(contract.text, contract.title)
+		
+		if gpt_analysis:
+			# Save to database
+			save_gpt_analysis_to_contract(contract, gpt_analysis)
+			db.commit()
+			db.refresh(contract)
+			
+			return {
+				"success": True,
+				"gpt_analysis": {
+					"summary": gpt_analysis.summary,
+					"key_risks": gpt_analysis.key_risks,
+					"recommendations": gpt_analysis.recommendations,
+					"overall_assessment": gpt_analysis.overall_assessment,
+					"confidence_score": gpt_analysis.confidence_score
+				}
+			}
+		else:
+			raise HTTPException(status_code=500, detail="GPT analysis failed")
+			
+	except Exception as e:
+		raise HTTPException(status_code=500, detail=f"GPT analysis error: {str(e)}")
+
+
+@router.get("/{contract_id}/gpt-analysis")
+async def get_gpt_analysis(
+	contract_id: int,
+	db: Session = Depends(get_db),
+	user: models.User = Depends(get_current_user)
+):
+	"""Get GPT analysis for a contract"""
+	contract = db.query(models.Contract).filter_by(id=contract_id, user_id=user.id).first()
+	if not contract:
+		raise HTTPException(status_code=404, detail="Contract not found")
+	
+	gpt_analysis = get_gpt_analysis_from_contract(contract)
+	if not gpt_analysis:
+		raise HTTPException(status_code=404, detail="No GPT analysis available for this contract")
+	
+	return gpt_analysis
+
+
+@router.post("/ask-gpt")
+async def ask_gpt_question(
+	question: str = Form(...),
+	contract_id: Optional[int] = Form(None),
+	db: Session = Depends(get_db),
+	user: models.User = Depends(get_current_user)
+):
+	"""Ask a question to GPT about contracts"""
+	if not openai_service.is_available():
+		raise HTTPException(status_code=503, detail="GPT service not available - API key not configured")
+	
+	contract_context = ""
+	if contract_id:
+		contract = db.query(models.Contract).filter_by(id=contract_id, user_id=user.id).first()
+		if contract:
+			contract_context = f"Contract: {contract.title}\nText: {contract.text[:2000]}..."
+	
+	try:
+		advice = await openai_service.get_contract_advice(question, contract_context)
+		if advice:
+			return {"advice": advice}
+		else:
+			raise HTTPException(status_code=500, detail="Failed to get advice from GPT")
+	except Exception as e:
+		raise HTTPException(status_code=500, detail=f"Error getting advice: {str(e)}") 
