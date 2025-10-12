@@ -12,7 +12,7 @@ from ..database import get_db
 from .. import models, schemas
 from ..ocr import extract_text_from_pdf_bytes, extract_text_from_image_bytes
 from ..analyzer import analyze_text, analyze_contract_comprehensive, save_gpt_analysis_to_contract, get_gpt_analysis_from_contract
-from ..openai_service import openai_service
+from ..openai_service import get_openai_service
 from ..auth import get_current_user
 
 router = APIRouter()
@@ -335,6 +335,7 @@ async def analyze_contract_with_gpt(
 	if not contract:
 		raise HTTPException(status_code=404, detail="Contract not found")
 	
+	openai_service = get_openai_service()
 	if not openai_service.is_available():
 		raise HTTPException(status_code=503, detail="GPT analysis not available - API key not configured")
 	
@@ -391,6 +392,7 @@ async def ask_gpt_question(
 	user: models.User = Depends(get_current_user)
 ):
 	"""Ask a question to GPT about contracts"""
+	openai_service = get_openai_service()
 	if not openai_service.is_available():
 		raise HTTPException(status_code=503, detail="GPT service not available - API key not configured")
 	

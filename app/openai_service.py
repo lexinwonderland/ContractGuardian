@@ -25,7 +25,11 @@ class OpenAIService:
             logger.warning("OPENAI_API_KEY not found in environment variables")
             self.client = None
         else:
-            self.client = OpenAI(api_key=self.api_key)
+            try:
+                self.client = OpenAI(api_key=self.api_key)
+            except Exception as e:
+                logger.error(f"Failed to initialize OpenAI client: {e}")
+                self.client = None
     
     def is_available(self) -> bool:
         """Check if OpenAI service is available"""
@@ -130,5 +134,12 @@ Provide your analysis in the JSON format specified above."""
             logger.error(f"Error getting contract advice: {e}")
             return None
 
-# Global instance
-openai_service = OpenAIService()
+# Global instance - created lazily to avoid import-time errors
+openai_service = None
+
+def get_openai_service():
+    """Get the global OpenAI service instance, creating it if needed"""
+    global openai_service
+    if openai_service is None:
+        openai_service = OpenAIService()
+    return openai_service

@@ -3,7 +3,7 @@ from typing import List, Optional
 import re
 import json
 from datetime import datetime
-from .openai_service import openai_service, GPTAnalysisResult
+from .openai_service import get_openai_service, GPTAnalysisResult
 
 
 @dataclass
@@ -166,6 +166,7 @@ async def analyze_contract_comprehensive(text: str, contract_title: str = "Contr
 	
 	# Perform GPT analysis if available
 	gpt_analysis = None
+	openai_service = get_openai_service()
 	if openai_service.is_available():
 		try:
 			gpt_analysis = await openai_service.analyze_contract_with_gpt(text, contract_title)
