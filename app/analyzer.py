@@ -198,12 +198,17 @@ def save_gpt_analysis_to_contract(contract, gpt_analysis: GPTAnalysisResult):
 	Save GPT analysis results to a contract model instance
 	"""
 	if gpt_analysis:
-		contract.gpt_summary = gpt_analysis.summary
-		contract.gpt_key_risks = json.dumps(gpt_analysis.key_risks)
-		contract.gpt_recommendations = json.dumps(gpt_analysis.recommendations)
-		contract.gpt_overall_assessment = gpt_analysis.overall_assessment
-		contract.gpt_confidence_score = str(gpt_analysis.confidence_score)
-		contract.gpt_analysis_date = datetime.utcnow()
+		try:
+			contract.gpt_summary = gpt_analysis.summary
+			contract.gpt_key_risks = json.dumps(gpt_analysis.key_risks)
+			contract.gpt_recommendations = json.dumps(gpt_analysis.recommendations)
+			contract.gpt_overall_assessment = gpt_analysis.overall_assessment
+			contract.gpt_confidence_score = str(gpt_analysis.confidence_score)
+			contract.gpt_analysis_date = datetime.utcnow()
+		except AttributeError as e:
+			# GPT columns don't exist in the database yet
+			print(f"Warning: GPT analysis columns not available: {e}")
+			raise
 
 
 def get_gpt_analysis_from_contract(contract) -> Optional[dict]:

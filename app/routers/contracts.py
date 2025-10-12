@@ -157,15 +157,18 @@ async def upload_contract(
 		# Database operations with transaction safety
 		print(f"[{request_id}] Saving to database...")
 		try:
-			contract = models.Contract(
-				title=title,
-				counterparty=counterparty,
-				production=production,
-				contract_date=contract_date,
-				stored_filename=stored_filename,
-				text=text,
-				user_id=user.id,
-			)
+			# Create contract with basic fields first
+			contract_data = {
+				"title": title,
+				"counterparty": counterparty,
+				"production": production,
+				"contract_date": contract_date,
+				"stored_filename": stored_filename,
+				"text": text,
+				"user_id": user.id,
+			}
+			
+			contract = models.Contract(**contract_data)
 			db.add(contract)
 			db.flush()
 
@@ -174,17 +177,21 @@ async def upload_contract(
 				cf = models.ClauseFlag(contract_id=contract.id, **flag)
 				db.add(cf)
 			
-			# Save GPT analysis if available
+			# Save GPT analysis if available (only if columns exist)
 			if gpt_analysis:
-				from ..openai_service import GPTAnalysisResult
-				gpt_result = GPTAnalysisResult(
-					summary=gpt_analysis["summary"],
-					key_risks=gpt_analysis["key_risks"],
-					recommendations=gpt_analysis["recommendations"],
-					overall_assessment=gpt_analysis["overall_assessment"],
-					confidence_score=gpt_analysis["confidence_score"]
-				)
-				save_gpt_analysis_to_contract(contract, gpt_result)
+				try:
+					from ..openai_service import GPTAnalysisResult
+					gpt_result = GPTAnalysisResult(
+						summary=gpt_analysis["summary"],
+						key_risks=gpt_analysis["key_risks"],
+						recommendations=gpt_analysis["recommendations"],
+						overall_assessment=gpt_analysis["overall_assessment"],
+						confidence_score=gpt_analysis["confidence_score"]
+					)
+					save_gpt_analysis_to_contract(contract, gpt_result)
+					print(f"[{request_id}] GPT analysis saved successfully")
+				except Exception as e:
+					print(f"[{request_id}] Warning: Could not save GPT analysis (columns may not exist): {e}")
 
 			db.commit()
 			db.refresh(contract)
